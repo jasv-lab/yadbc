@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dotnet:
+    name: .NET build and tests
+    # Linux on purpose: the Windows-only bits (Credential Manager, job objects) are guarded at runtime,
+    # so everything compiles here — and a cross-platform break shows up in CI.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet build yadbc.slnx -c Release
+      - run: dotnet test tests/Yadbc.Broker.Tests -c Release --no-build
+
+  web:
+    name: Web lint, tests and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npx prettier --check "src/**/*.{ts,html,css}"
+      - run: npx ng test --watch=false
+      - run: npx ng build
+
+  helm:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Lint
+        run: >
+          helm lint deploy/helm/yadbc-broker
+          --set image.repository=ghcr.io/example/yadbc-broker
+          --set oidc.authority=https://login.example.com
+          --set oidc.clientId=yadbc
+      - name: Render with an HTTPRoute and with an Ingress
+        run: |
+          common="--set image.repository=ghcr.io/example/yadbc-broker --set oidc.authority=https://login.example.com --set oidc.clientId=yadbc"
+          helm template yadbc-broker deploy/helm/yadbc-broker -n yadbc $common \
+            --set httpRoute.enabled=true \
+            --set 'httpRoute.parentRefs[0].name=gateway' \
+            --set 'httpRoute.hostnames[0]=yadbc.example.com' > /dev/null
+          helm template yadbc-broker deploy/helm/yadbc-broker -n yadbc $common \
+            --set ingress.enabled=true --set ingress.host=yadbc.example.com --set ingress.tlsSecretName=yadbc-tls > /dev/null
+      - name: Required values are enforced
+        run: |
+          if helm template yadbc-broker deploy/helm/yadbc-broker > /dev/null 2>&1; then
+            echo "rendering without image.repository / oidc settings should fail"; exit 1
+          fi

@@ -26,7 +26,11 @@ A confidential client with the same redirect URI and scopes `openid profile emai
 
 ## 2. Image
 
-From the repository root:
+CI (`.github/workflows/broker-image.yml`) publishes it to `ghcr.io/<owner>/yadbc-broker`: `:main` and
+`:sha-<commit>` from the main branch, and `:1.2.3` from a `broker-v1.2.3` tag. Pin a version tag in your
+values. While the package is private, the cluster needs a pull secret for ghcr.io (`imagePullSecrets`).
+
+To build it yourself, run this from the repository root:
 
 ```bash
 docker build -f src/Yadbc.Broker/Dockerfile -t <registry>/yadbc-broker:0.1.0 .
