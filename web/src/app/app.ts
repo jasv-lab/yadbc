@@ -16,6 +16,7 @@ import { ConnectionDialog } from './connections/connection-dialog'
 import { CatalogDialog } from './sharing/catalog-dialog'
 import { ShareDialog } from './sharing/share-dialog'
 import { Sharing } from './sharing/sharing'
+import { SchemaActions } from './schema/schema-actions'
 import { Connections } from './connections/connections'
 import { Commands } from './core/commands'
 import { ConnectionProfile, Statement } from './core/protocol'
@@ -36,6 +37,7 @@ import { Icon } from './ui/icon'
 import { ResultsPanel } from './workspace/results-panel'
 import { ActivityView } from './activity/activity-view'
 import { DiagramView } from './diagram/diagram-view'
+import { CompareView } from './compare/compare-view'
 import { Catalog } from './schema/catalog'
 import { Session } from './core/session'
 import { BlockingWatch } from './blocking/blocking-watch'
@@ -51,7 +53,7 @@ const ENV_EDGE = { local: 'border-t-env-local', dev: 'border-t-env-dev', prod: '
 @Component({
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SqlEditor, ResultsPanel, Icon, Drawer, Sidebar, ActivityView, DiagramView],
+  imports: [SqlEditor, ResultsPanel, Icon, Drawer, Sidebar, ActivityView, DiagramView, CompareView],
   // minmax(0,1fr): an implicit `auto` column would grow to the content's min width (grid + pinned drawer).
   host: { class: 'grid h-screen grid-cols-[minmax(0,1fr)] grid-rows-[1fr_22px] select-none' },
   templateUrl: './app.html',
@@ -61,6 +63,7 @@ export class App {
   protected readonly connections = inject(Connections)
   /** Shared connections: signs in on demand, keeps installed shares in sync from app start. */
   private readonly sharing = inject(Sharing)
+  private readonly schemaActions = inject(SchemaActions)
   protected readonly commands = inject(Commands)
   protected readonly inspector = inject(CellInspector)
   private readonly edits = inject(Edits)
@@ -108,6 +111,10 @@ export class App {
   protected readonly diagram = computed(() => {
     const t = this.current()
     return t?.kind === 'diagram' ? t : null
+  })
+  protected readonly compare = computed(() => {
+    const t = this.current()
+    return t?.kind === 'compare' ? t : null
   })
   /**
    * The editor stays mounted while an activity tab is showing (it owns every tab's Monaco model), so it's
@@ -241,6 +248,21 @@ export class App {
       },
       { id: 'connection.new', label: 'New connection', run: () => this.editConnection() },
       { id: 'sharing.catalog', label: 'Shared connections…', run: () => this.openCatalog() },
+      {
+        id: 'table.new',
+        label: 'New table…',
+        when: () => !!any(),
+        run: () => this.schemaActions.editTable(any()!.connection, 'public', null),
+      },
+      {
+        id: 'compare.open',
+        label: 'Compare schemas…',
+        when: () => !!any() || this.connections.list().length > 1,
+        run: () => {
+          const from = any()?.connection ?? this.connections.list()[0]
+          if (from) this.workspace.openCompare(from)
+        },
+      },
       {
         id: 'sharing.share',
         label: 'Share this connection…',

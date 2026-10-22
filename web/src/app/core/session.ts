@@ -18,6 +18,7 @@ export type SavedTab =
     }
   | { kind: 'activity'; connectionId: string }
   | { kind: 'diagram'; connectionId: string; schema: string }
+  | { kind: 'compare'; connectionId: string; sourceId: string; schemas?: string[] | null }
 
 export interface SavedState {
   version: 1
@@ -53,6 +54,11 @@ export class Session {
     for (const t of this.workspace.tabs()) {
       if (t.kind === 'editor') t.text()
       else if (t.kind === 'diagram') t.schema()
+      else if (t.kind === 'compare') {
+        t.source()
+        t.target()
+        t.schemas()
+      }
     }
     return {}
   })
@@ -112,6 +118,13 @@ export class Session {
           }
         if (t.kind === 'diagram')
           return { kind: 'diagram', connectionId: t.connection.id, schema: t.schema() }
+        if (t.kind === 'compare')
+          return {
+            kind: 'compare',
+            connectionId: t.target().id,
+            sourceId: t.source().id,
+            schemas: t.schemas(),
+          }
         return { kind: 'activity', connectionId: t.connection.id }
       }),
       prefs: this.prefs,

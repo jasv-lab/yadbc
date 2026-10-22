@@ -225,6 +225,39 @@ Source material: [ui-debate-verdict.md](ui-debate-verdict.md) (the UI/UX rulings
 - Quick actions follow the context: explain / fix an error, explain the plan, make it faster, explain the query, write a query.
 - Answers render from a small Markdown parser into data (no HTML from the model). SQL blocks get Copy, Insert (under your SQL, selected) and Replace (in place of the statement asked about, if it's still there as it was). Nothing an answer contains runs by itself.
 
+## 9c. Schema changes: compare, table definition, table editor
+
+One model serves all three (`web/src/app/schema-model`):
+- **The snapshot** (backend `SchemaChanges/SnapshotReader`, read over the read-only catalog pool) holds a schema's structure:
+  - tables: columns with type, default, identity, generated and collation; constraints; indexes; triggers; partitioning;
+  - views and materialized views, functions and procedures, enums, sequences.
+- **Definitions** come from Postgres' own `pg_get_*def`, read with `SET LOCAL search_path = pg_catalog` inside a read-only transaction. Every name in them is then schema-qualified, so generated scripts run whatever the target session's search_path is, and `SET LOCAL` leaves the pooled connection as it was.
+- **Left out:** extension-owned objects, partitions' cloned indexes and constraints, and identity columns' internal sequences.
+
+**The diff** (`diff.ts`, pure and unit-tested) turns two snapshots into one Change per object: create, drop or alter.
+- **Phased statements:** each change carries statements tagged by phase, and the script is the selected changes' statements in phase order: schemas, enums, sequences, tables, columns, constraints, indexes, foreign keys, functions, views, triggers, then drops in reverse.
+- **Changed in place where Postgres can:** column type (`USING col::type`), default, NOT NULL, identity, enum values (ADD VALUE in the right position), sequence options, and views that only gain columns (CREATE OR REPLACE).
+- **Dropped and re-created:** other view changes, materialized views, changed indexes, constraints and triggers, functions whose return type changed, and generated expressions.
+- **Renames:** an index or trigger with the same definition under another name is a rename.
+- **Notes instead of SQL** for what Postgres can't do (removing or reordering enum values, partitioning changes).
+- **Drops** are flagged destructive and never selected by default.
+- **Verified** by a round trip against real Postgres: drift a cloned database, apply the script, re-compare to zero.
+
+**Compare schemas** is a tab (Ctrl+K, or the connection menu) between two connections, optionally limited to some schemas.
+- **Direction:** the script makes the target look like the source. The tab wears the target's environment colour.
+- **Layout:** the list groups differences by kind, with tables' columns, constraints and indexes under them. Filters: missing / different / extra, plus text. The side panel shows both definitions as a line diff and the change's statements.
+- **Actions:** Copy, Open in new tab (on the target), and Apply.
+- **Apply** (`/api/schema-changes/{id}/apply`) runs all statements in one transaction (all or nothing; the failing statement is named), is recorded in History as an edit, and re-compares. It's refused for prod: prod changes go through an editor tab, where the read-only lock applies like everywhere else.
+
+**Table definition:** *Show definition* now works for tables too. Postgres has no `pg_get_tabledef`, so it's the same generator: serial sequences, CREATE TABLE with its constraints, indexes, foreign keys, triggers and comments.
+
+**Table editor** (*Edit table…* on a table, *New table…* on a schema or in Ctrl+K) is a form, with the SQL shown live as you edit.
+- **What you can edit:** columns (name, type, NOT NULL, default, identity, primary key, comment); keep or drop existing indexes and constraints; add indexes, unique, check and foreign-key constraints; rename the table; its comment.
+- **How the SQL is made:** the edit is the "source" and the live table the "target", so the same diff produces the ALTER statements.
+- **Renames:** columns remember their original name, so a rename is RENAME COLUMN, not a drop and an add.
+- **Left as they are:** triggers and partitioning.
+- **Running it:** Apply and Open in new tab, as in Compare.
+
 ## 10. MCP server
 
 - Official C# MCP SDK (Streamable HTTP, stateless) in the same process, on its **own fixed port** `127.0.0.1:47800` (the UI port changes every launch; a client config can't follow that). If the port is taken (another yadbc window), that instance runs without MCP.

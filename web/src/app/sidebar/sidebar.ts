@@ -122,6 +122,9 @@ const ENV_DOT = { local: 'bg-env-local', dev: 'bg-env-dev', prod: 'bg-env-prod' 
           <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="activity.emit(c)">
             <y-icon name="activity" [size]="13" /> Activity and locks
           </button>
+          <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="commands.execute('compare.open')">
+            <y-icon name="compare" [size]="13" /> Compare schema with…
+          </button>
           <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="edit.emit(c)">
             <y-icon name="edit" [size]="13" /> Edit {{ c.name }}…
           </button>
@@ -226,6 +229,7 @@ export class Sidebar {
   readonly diagram = output<ConnectionProfile>()
 
   protected readonly connections = inject(Connections)
+  protected readonly commands = inject(Commands)
   protected readonly envDot = ENV_DOT
   protected readonly initials = initials
   protected readonly view = signal<'schema' | 'history' | 'snippets'>('schema')

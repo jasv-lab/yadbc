@@ -153,6 +153,9 @@ function compact(n: number): string {
         <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="visualize(node.schema)">
           Visualize schema
         </button>
+        <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="editTable(node.schema, null)">
+          New table…
+        </button>
         <div class="menu-sep"></div>
         <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="refresh()">Refresh schema</button>
       </div>
@@ -171,6 +174,15 @@ function compact(n: number): string {
         @if (hasDefinition(node.object)) {
           <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="openDefinition(node.object)">
             Show definition
+          </button>
+        }
+        @if (node.object.kind === 'table') {
+          <button
+            cdkMenuItem
+            class="menu-item"
+            (cdkMenuItemTriggered)="editTable(node.object.schema, node.object.name)"
+          >
+            Edit table…
           </button>
         }
         <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="copyName(node.object)">
@@ -604,6 +616,11 @@ export class SchemaTree {
 
   protected copyName(o: CatalogObject) {
     this.actions.copyName(o)
+  }
+
+  protected editTable(schema: string, table: string | null) {
+    const conn = this.connection()
+    if (conn) this.actions.editTable(conn, schema, table)
   }
 
   protected visualize(schema: string) {

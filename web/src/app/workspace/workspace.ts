@@ -120,7 +120,36 @@ export class DiagramTab {
   }
 }
 
-export type WorkTab = EditorTab | ActivityTab | DiagramTab
+/**
+ * Compare two connections' schemas. Its `connection` is the target — the one a script would change —
+ * so the tab wears the target's environment colour.
+ */
+export class CompareTab {
+  readonly kind = 'compare'
+  readonly source: WritableSignal<ConnectionProfile>
+  readonly target: WritableSignal<ConnectionProfile>
+  /** null = every schema */
+  readonly schemas = signal<string[] | null>(null)
+
+  constructor(
+    readonly id: string,
+    source: ConnectionProfile,
+    target: ConnectionProfile,
+  ) {
+    this.source = signal(source)
+    this.target = signal(target)
+  }
+
+  get connection() {
+    return this.target()
+  }
+
+  get title() {
+    return `Compare · ${this.source().name} → ${this.target().name}`
+  }
+}
+
+export type WorkTab = EditorTab | ActivityTab | DiagramTab | CompareTab
 
 let tabSeq = 0
 const DDL = /^\s*(create|alter|drop|truncate|comment|rename|grant|revoke|refresh)\b/i
@@ -189,6 +218,12 @@ export class Workspace {
         tab.params = s.params ?? {}
         tab.lazy = true
         tabs.push(tab)
+      } else if (s.kind === 'compare') {
+        const source = byId.get(s.sourceId)
+        if (!source) continue
+        const tab = new CompareTab(`t${++tabSeq}`, source, c)
+        tab.schemas.set(s.schemas ?? null)
+        tabs.push(tab)
       } else if (s.kind === 'activity') {
         tabs.push(new ActivityTab(`t${++tabSeq}`, c, `Activity · ${c.name}`))
       } else {
@@ -233,6 +268,21 @@ export class Workspace {
       return this.activeTabId.set(existing.id)
     }
     const tab = new DiagramTab(`t${++tabSeq}`, connection, schema)
+    this.tabs.update((tabs) => [...tabs, tab])
+    this.activeTabId.set(tab.id)
+  }
+
+  /** Compare from `source` (the active connection) to the most recently used other one, or itself. */
+  openCompare(source: ConnectionProfile, target?: ConnectionProfile) {
+    const used = this.tabs()
+      .map((t) => t.connection)
+      .reverse()
+    const other =
+      target ??
+      used.find((c) => c.id !== source.id) ??
+      this.connections.list().find((c) => c.id !== source.id) ??
+      source
+    const tab = new CompareTab(`t${++tabSeq}`, source, other)
     this.tabs.update((tabs) => [...tabs, tab])
     this.activeTabId.set(tab.id)
   }

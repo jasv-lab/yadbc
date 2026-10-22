@@ -15,6 +15,7 @@ using Yadbc.Host.History;
 using Yadbc.Host.Hosting;
 using Yadbc.Host.Mcp;
 using Yadbc.Host.Query;
+using Yadbc.Host.SchemaChanges;
 using Yadbc.Host.Sharing;
 using Yadbc.Host.Snippets;
 
@@ -87,6 +88,7 @@ public static class Program
         app.MapAiEndpoints();
         app.MapSnippetEndpoints();
         app.MapSharingEndpoints();
+        app.MapSchemaChangeEndpoints();
         app.MapMcpSettings();
         app.MapMcp("/mcp");
         app.Map("/ws", (HttpContext ctx, QuerySocketHandler handler) => handler.Handle(ctx));

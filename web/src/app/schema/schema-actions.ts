@@ -1,12 +1,16 @@
+import { Dialog } from '@angular/cdk/dialog'
 import { inject, Injectable } from '@angular/core'
 import { catchError, of } from 'rxjs'
+import { tableDefinition } from '../schema-model/diff'
+import { SchemaChanges } from '../schema-model/schema-changes'
+import { TableEditor, TableEditorData } from '../table-editor/table-editor'
 import { ConnectionProfile } from '../core/protocol'
 import { Edits } from '../editing/edits'
 import { Workspace } from '../workspace/workspace'
 import { Catalog, CatalogObject, ident, ObjectKind, qualified } from './catalog'
 
 const RELATIONS = new Set<ObjectKind>(['table', 'view', 'matview', 'foreign'])
-const DEFINITIONS = new Set<ObjectKind>(['view', 'matview', 'function', 'procedure'])
+const DEFINITIONS = new Set<ObjectKind>(['table', 'view', 'matview', 'function', 'procedure'])
 
 /** What you can do with a catalog object — shared by the schema tree and the command palette. */
 @Injectable({ providedIn: 'root' })
@@ -14,6 +18,8 @@ export class SchemaActions {
   private readonly catalog = inject(Catalog)
   private readonly workspace = inject(Workspace)
   private readonly edits = inject(Edits)
+  private readonly schemaChanges = inject(SchemaChanges)
+  private readonly dialog = inject(Dialog)
 
   isRelation(o?: CatalogObject) {
     return !!o && RELATIONS.has(o.kind)
@@ -53,10 +59,26 @@ export class SchemaActions {
   }
 
   openDefinition(conn: ConnectionProfile, o: CatalogObject) {
+    // Postgres has no pg_get_tabledef: a table's CREATE script is built like Compare schemas builds one.
+    if (o.kind === 'table') {
+      this.schemaChanges.table(conn.id, o.schema, o.name).subscribe({
+        next: (s) => {
+          const t = s.tables[0]
+          if (t) this.workspace.openTab(conn, `${tableDefinition(t, s.sequences)}\n`)
+        },
+        error: (e: Error) => this.edits.say(e.message, true),
+      })
+      return
+    }
     this.catalog.definition(conn.id, o.kind, o.oid).subscribe({
       next: (sql) => this.workspace.openTab(conn, sql),
       error: (e) => this.edits.say(e instanceof Error ? e.message : 'Could not load the definition', true),
     })
+  }
+
+  /** Edit an existing table (`table` given) or create one in `schema`. */
+  editTable(conn: ConnectionProfile, schema: string, table: string | null) {
+    this.dialog.open<boolean, TableEditorData>(TableEditor, { data: { connection: conn, schema, table } })
   }
 
   copyName(o: CatalogObject) {

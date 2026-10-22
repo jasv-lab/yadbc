@@ -42,6 +42,8 @@
               <y-icon name="activity" [size]="12" class="shrink-0" [class]="envText[t.connection.env]" />
             } @else if (t.kind === 'diagram') {
               <y-icon name="diagram" [size]="12" class="shrink-0" [class]="envText[t.connection.env]" />
+            } @else if (t.kind === 'compare') {
+              <y-icon name="compare" [size]="12" class="shrink-0" [class]="envText[t.connection.env]" />
             } @else {
               <span class="size-1.5 shrink-0 rounded-full" [class]="envDot[t.connection.env]"></span>
             }
@@ -123,6 +125,9 @@
     }
     @if (diagram(); as d) {
       <y-diagram-view class="min-h-0 flex-1" [tab]="d" />
+    }
+    @if (compare(); as c) {
+      <y-compare-view class="min-h-0 flex-1" [class.prod-frame]="isProd()" [tab]="c" />
     }
     @if (editorTab(); as t) {
       <div
@@ -215,7 +220,11 @@
     } @else {
       <span class="flex-1"></span>
       <span>{{
-        t.kind === 'activity' ? 'Activity · refreshes every 2 s' : 'Drag to pan · wheel to zoom'
+        t.kind === 'activity'
+          ? 'Activity · refreshes every 2 s'
+          : t.kind === 'compare'
+            ? 'Compare · read-only until you apply'
+            : 'Drag to pan · wheel to zoom'
       }}</span>
     }
   } @else {
