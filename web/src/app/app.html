@@ -1,0 +1,224 @@
+<div class="relative flex min-h-0">
+  <!-- Sidebar -->
+  @if (sidebarOpen()) {
+    <y-sidebar
+      [style.width.px]="sidebarWidth()"
+      [current]="current()?.connection ?? null"
+      (open)="openConnection($event)"
+      (activity)="workspace.openActivity($event)"
+      (diagram)="visualize()"
+      (create)="editConnection()"
+      (edit)="editConnection($event)"
+      (remove)="deleteConnection($event)"
+      (share)="shareConnection($event)"
+      (keepLocal)="keepLocal($event)"
+      (catalog)="openCatalog()"
+    />
+    <div
+      class="relative z-10 -mx-[3px] w-[6px] shrink-0 cursor-col-resize hover:bg-accent/40"
+      title="Drag to resize · double-click to reset"
+      (pointerdown)="startSidebarDrag($event)"
+      (dblclick)="resetSidebar()"
+    ></div>
+  }
+
+  <!-- Main -->
+  <main class="flex min-w-0 flex-1 flex-col">
+    <!-- Tab strip -->
+    <div class="flex h-8 shrink-0 items-stretch border-b border-line bg-sunken">
+      <div class="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+        @for (t of workspace.tabs(); track t.id) {
+          <div
+            class="group flex max-w-[220px] cursor-pointer items-center gap-2 border-r border-t-2 border-r-line pr-1 pl-3"
+            [class]="
+              t.id === workspace.activeTabId()
+                ? envEdge[t.connection.env] + ' bg-raised text-fg'
+                : 'border-t-transparent text-muted hover:bg-hover'
+            "
+            (click)="workspace.activeTabId.set(t.id)"
+            (auxclick)="$event.button === 1 && closeTab(t)"
+          >
+            @if (t.kind === 'activity') {
+              <y-icon name="activity" [size]="12" class="shrink-0" [class]="envText[t.connection.env]" />
+            } @else if (t.kind === 'diagram') {
+              <y-icon name="diagram" [size]="12" class="shrink-0" [class]="envText[t.connection.env]" />
+            } @else {
+              <span class="size-1.5 shrink-0 rounded-full" [class]="envDot[t.connection.env]"></span>
+            }
+            <span class="truncate">{{ t.title }}</span>
+            @if (blocking.byTab().get(t.id)?.blocked?.length; as n) {
+              <span
+                class="rounded-full bg-danger px-1.5 text-[10.5px] leading-4 font-semibold text-white"
+                [title]="
+                  'This tab\'s open transaction is blocking ' + n + (n === 1 ? ' session' : ' sessions')
+                "
+              >
+                {{ n }}
+              </span>
+            }
+            @if (t.kind === 'editor' && t.session(); as s) {
+              @if (s.readOnly || t.connection.env === 'prod') {
+                <button
+                  class="icon-btn h-[18px] w-[18px]"
+                  [class.text-env-prod]="!s.readOnly"
+                  [title]="
+                    s.readOnly
+                      ? 'Read-only session · click to allow writes'
+                      : 'Writes allowed · click to make read-only'
+                  "
+                  (click)="$event.stopPropagation(); toggleLock(t)"
+                >
+                  <y-icon [name]="s.readOnly ? 'lock' : 'unlock'" [size]="12" />
+                </button>
+              }
+            }
+            <button
+              class="icon-btn opacity-0 group-hover:opacity-100"
+              [title]="commands.tooltip('tab.close')"
+              (click)="$event.stopPropagation(); closeTab(t)"
+            >
+              <y-icon name="x" [size]="13" />
+            </button>
+          </div>
+        }
+      </div>
+      @if (active(); as t) {
+        <div class="flex items-center px-2">
+          <!-- Writing a query is the assistant's main job, so it sits with Run, not behind errors and plans. -->
+          <button
+            class="mr-1 flex items-center gap-1 rounded px-2 py-0.5 text-muted hover:bg-hover hover:text-fg"
+            [title]="commands.tooltip('ai.open') + ' · write, explain or fix a query'"
+            (click)="inspector.showAi()"
+          >
+            <y-icon name="ai" [size]="13" /> Ask AI
+          </button>
+          @if (t.status() === 'running') {
+            <button class="run-btn" [title]="commands.tooltip('run.cancel')" (click)="toggleRun()">
+              <y-icon name="stop" [size]="13" /> Cancel{{ elapsed() ? ' · ' + elapsed() : '' }}
+            </button>
+          } @else {
+            <button
+              class="mr-1.5 rounded px-2 py-0.5 text-muted hover:bg-hover hover:text-fg disabled:opacity-50"
+              [disabled]="t.status() !== 'ready'"
+              [title]="commands.tooltip('explain.plan') + ' · Shift+click or Ctrl+Shift+E to analyze'"
+              (click)="explain($event.shiftKey)"
+            >
+              Explain
+            </button>
+            <button
+              class="run-btn"
+              [disabled]="t.status() !== 'ready'"
+              [title]="commands.tooltip('run.statement')"
+              (click)="toggleRun()"
+            >
+              <y-icon name="play" [size]="13" /> Run
+            </button>
+          }
+        </div>
+      }
+    </div>
+
+    @if (activity(); as a) {
+      <y-activity-view class="min-h-0 flex-1" [class.prod-frame]="isProd()" [tab]="a" />
+    }
+    @if (diagram(); as d) {
+      <y-diagram-view class="min-h-0 flex-1" [tab]="d" />
+    }
+    @if (editorTab(); as t) {
+      <div
+        class="relative flex min-h-0 flex-1 flex-col"
+        [class.hidden]="current()?.kind !== 'editor'"
+        [class.prod-frame]="isProd()"
+      >
+        <div class="shrink-0 overflow-hidden" [style.height.px]="resultsMaximized() ? 0 : editorHeight()">
+          <y-sql-editor [tab]="t" />
+        </div>
+        <div
+          class="h-1 shrink-0 cursor-row-resize border-y border-line bg-sunken hover:bg-accent/40"
+          title="Drag to resize · double-click to maximize results"
+          (pointerdown)="startSplitDrag($event)"
+          (dblclick)="resultsMaximized.set(!resultsMaximized())"
+        ></div>
+        <y-results-panel class="min-h-0 flex-1" [tab]="t" (revealError)="revealError($event)" />
+
+        @if (t.status() === 'failed') {
+          <div
+            class="absolute inset-x-0 top-0 flex items-center gap-3 border-b border-danger/40 bg-danger-bg px-3 py-2 text-danger"
+          >
+            <y-icon name="alert" />
+            <span class="flex-1">Couldn't connect: {{ t.openError() }}</span>
+            <button class="run-btn" (click)="workspace.reconnect(t)">Retry</button>
+          </div>
+        }
+      </div>
+    }
+    @if (!current()) {
+      <div class="flex flex-1 flex-col items-center justify-center gap-3 text-muted">
+        <y-icon name="database" [size]="28" class="text-faint" />
+        <p>Pick a connection to open a query tab.</p>
+        <div class="flex gap-2">
+          <button class="run-btn" (click)="editConnection()">
+            <y-icon name="plus" [size]="13" /> New connection
+          </button>
+          <button class="run-btn" (click)="openCatalog()">
+            <y-icon name="database" [size]="13" /> Shared connections
+          </button>
+        </div>
+      </div>
+    }
+  </main>
+
+  @if (inspector.open()) {
+    <y-drawer />
+  }
+</div>
+
+<!-- Status bar: muted when everything is default, loud when it isn't. -->
+<footer class="flex items-center gap-3 border-t border-line bg-sunken px-3 text-[11.5px] text-muted">
+  @if (blockingElsewhere(); as b) {
+    <button
+      class="rounded bg-danger-bg px-1.5 text-danger"
+      (click)="workspace.activeTabId.set(b.tab.id)"
+      title="Go to the tab holding the locks"
+    >
+      ⛔ {{ b.tab.title }} is blocking {{ b.count }} {{ b.count === 1 ? 'session' : 'sessions' }}
+    </button>
+  }
+  @if (current(); as t) {
+    <span class="flex items-center gap-1.5">
+      <span class="size-1.5 rounded-full" [class]="envDot[t.connection.env]"></span>
+      {{ t.connection.name }} · {{ t.connection.database }}
+    </span>
+    @if (t.connection.tunnel; as tun) {
+      <span class="flex items-center gap-1 text-faint" title="Connected through a tunnel yadbc runs for you">
+        <y-icon name="tunnel" [size]="12" />
+        {{
+          tun.kind === 'ssh'
+            ? 'SSH ' + tun.sshHost
+            : 'k8s ' + (tun.kubeContext || 'current') + '/' + tun.kubeTarget
+        }}
+      </span>
+    }
+    @if (t.kind === 'editor') {
+      @if (t.session()?.readOnly) {
+        <span class="rounded bg-sunken px-1.5 text-muted">READ ONLY</span>
+      } @else if (t.connection.env === 'prod') {
+        <span class="rounded bg-env-prod/15 px-1.5 text-env-prod">WRITES ENABLED</span>
+      }
+      @if (t.status() === 'connecting') {
+        <span>Connecting…</span>
+      }
+      <span class="flex-1"></span>
+      @if (t.session(); as s) {
+        <span>PostgreSQL {{ s.serverVersion }} · pid {{ s.pid }}</span>
+      }
+    } @else {
+      <span class="flex-1"></span>
+      <span>{{
+        t.kind === 'activity' ? 'Activity · refreshes every 2 s' : 'Drag to pan · wheel to zoom'
+      }}</span>
+    }
+  } @else {
+    <span>yadbc</span>
+  }
+</footer>

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Yadbc.Broker/Yadbc.Broker.csproj" />
+    <Project Path="src/Yadbc.Contracts/Yadbc.Contracts.csproj" />
+    <Project Path="src/Yadbc.Host/Yadbc.Host.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Yadbc.Broker.Tests/Yadbc.Broker.Tests.csproj" />
+  </Folder>
+</Solution>

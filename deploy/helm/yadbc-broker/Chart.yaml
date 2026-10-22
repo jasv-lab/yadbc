@@ -1,0 +1,6 @@
+apiVersion: v2
+name: yadbc-broker
+description: yadbc's shared-connections broker — a team catalog of database connections and their logins
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

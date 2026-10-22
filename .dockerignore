@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+web/
+dev/
+docs/
+tests/
+src/Yadbc.Host/
+.git/

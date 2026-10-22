@@ -1,0 +1,7 @@
+yadbc broker {{ .Chart.AppVersion }} is starting in namespace {{ .Release.Namespace }}.
+
+Check it:   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "yadbc-broker.name" . }} 8080:80
+            curl http://127.0.0.1:8080/healthz      → "ok"
+
+The identity provider's redirect URI must be https://<your host>/auth/callback.
+In yadbc: Shared connections… → enter https://<your host> → Sign in.

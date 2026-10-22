@@ -1,0 +1,62 @@
+# yadbc shared-connections broker. See docs/design.md §10b and deploy/README.md.
+# Secrets never go in here: they come from an existing Secret (existingSecret below).
+
+image:
+  # Build it with src/Yadbc.Broker/Dockerfile and push it to a registry your cluster can pull from.
+  repository: "" # required, e.g. ghcr.io/you/yadbc-broker
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+oidc:
+  # Issuer URL: https://login.microsoftonline.com/<tenant-id>/v2.0, a Keycloak realm, any OIDC provider.
+  authority: "" # required
+  clientId: "" # required
+  scopes: [profile, email]
+  # Providers that keep names and emails out of the ID token need the userinfo call.
+  useUserInfo: false
+  # The stable user id: the first of these claims present (Entra's oid; sub elsewhere).
+  idClaims: [oid, sub]
+  # Who is admin (may edit and delete any share): an Entra app role by default.
+  adminClaim: roles
+  adminValue: yadbc.admin
+
+# A Secret in the release namespace with two keys:
+#   Broker__LoginKey            openssl rand -base64 32 — encrypts stored logins; keep a copy
+#   Broker__Oidc__ClientSecret  the OIDC client secret
+existingSecret: yadbc-broker
+
+deviceTokenDays: 90
+backupKeepDays: 7
+
+persistence:
+  # One small volume for broker.db and its nightly backups. Any RWO class works, NFS included:
+  # SQLite runs with one connection in exclusive locking mode (no shared-memory WAL index).
+  storageClass: "" # cluster default
+  size: 1Gi
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+# Expose it either through a Gateway API HTTPRoute…
+httpRoute:
+  enabled: false
+  # parentRefs:
+  #   - name: my-gateway
+  #     namespace: gateway-system
+  #     sectionName: https
+  parentRefs: []
+  hostnames: [] # [yadbc.example.com]
+
+# …or a classic Ingress. TLS terminates in front of the broker; it trusts X-Forwarded-Proto.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: "" # yadbc.example.com
+  tlsSecretName: ""

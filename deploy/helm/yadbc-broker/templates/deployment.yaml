@@ -1,0 +1,84 @@
+# One replica, Recreate: SQLite is owned by exactly one process; a second pod would wait for the file.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "yadbc-broker.name" . }}
+  labels: {{- include "yadbc-broker.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "yadbc-broker.selector" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "yadbc-broker.selector" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1654 # the chiseled .NET image's "app" user
+        fsGroup: 1654
+      containers:
+        - name: broker
+          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: Broker__Oidc__Authority
+              value: {{ required "oidc.authority is required" .Values.oidc.authority | quote }}
+            - name: Broker__Oidc__ClientId
+              value: {{ required "oidc.clientId is required" .Values.oidc.clientId | quote }}
+            - name: Broker__Oidc__UseUserInfo
+              value: {{ .Values.oidc.useUserInfo | quote }}
+            - name: Broker__Oidc__AdminClaim
+              value: {{ .Values.oidc.adminClaim | quote }}
+            - name: Broker__Oidc__AdminValue
+              value: {{ .Values.oidc.adminValue | quote }}
+            {{- range $i, $scope := .Values.oidc.scopes }}
+            - name: Broker__Oidc__Scopes__{{ $i }}
+              value: {{ $scope | quote }}
+            {{- end }}
+            {{- range $i, $claim := .Values.oidc.idClaims }}
+            - name: Broker__Oidc__IdClaims__{{ $i }}
+              value: {{ $claim | quote }}
+            {{- end }}
+            - name: Broker__DeviceTokenDays
+              value: {{ .Values.deviceTokenDays | quote }}
+            - name: Broker__BackupKeepDays
+              value: {{ .Values.backupKeepDays | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ required "existingSecret is required" .Values.existingSecret }}
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "yadbc-broker.name" . }}-data
+        - name: tmp
+          emptyDir: {}

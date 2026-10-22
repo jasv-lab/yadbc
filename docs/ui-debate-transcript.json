@@ -1,0 +1,659 @@
+{
+ "openings": [
+  {
+   "positions": [
+    {
+     "topic": "controls",
+     "claim": "Keep a 32px editor action strip per tab, always visible: [Run ▾] [Cancel] [Explain] [Tx: Auto|Manual ▾] [Commit] [Rollback] [Limit 10k ▾], plus connection and database pickers on the right. Shortcuts: Ctrl+Enter runs the statement under the cursor (Monaco highlights its range before it executes), Ctrl+Shift+Enter runs the selection or the whole script, Ctrl+E runs EXPLAIN, Ctrl+Shift+E runs EXPLAIN ANALYZE, and Esc Esc cancels (pg_cancel_backend). While a query runs, Run turns into a red Cancel button with a live elapsed timer.",
+     "why": "Jan uses the mouse as much as the keyboard. If Run and Cancel only exist as shortcuts or behind hover, a mouse user has no way in, and a runaway query can't be stopped quickly. DataGrip and SSMS keep Run and Cancel visible because you reach for them hundreds of times a day. Hiding them saves 32px and costs speed every time."
+    },
+    {
+     "topic": "controls",
+     "claim": "Use explicit transaction mode, not just autocommit. In Manual mode the first statement opens a transaction. Commit (Ctrl+Alt+Enter) and Rollback (Ctrl+Alt+Z) light up, and a 'TX 00:42' counter starts ticking. Closing the tab or switching connection with an open transaction blocks with a dialog that offers Commit, Rollback or Cancel. Prod connections default to Manual mode plus read-only (SET TRANSACTION READ ONLY), and unlocking takes a click plus typing the connection name.",
+     "why": "Most of the danger in ad-hoc data edits comes from not knowing whether you're inside a transaction. Postgres sessions that sit 'idle in transaction' with your locks held are the classic way to take down a dev database for the whole team. DataGrip's Tx dropdown is one of its best features."
+    },
+    {
+     "topic": "controls",
+     "claim": "Edit flow: F2, double-click or just typing starts editing a cell. Tab and Enter commit the cell and move on. Ctrl+D sets NULL, Ctrl+Shift+D sets DEFAULT. Alt+Insert adds a row and Ctrl+Delete marks the selected rows for deletion (struck through, red gutter). Staged changes show an amber cell tint and a gutter bar. Ctrl+S opens the Apply preview in the drawer with the generated SQL in a read-only Monaco, and Ctrl+Enter there executes it. Ctrl+Z reverts the last staged edit, Ctrl+Shift+Z reverts all. Running a new query over a result with pending edits blocks with an Apply / Discard / Cancel prompt.",
+     "why": "Editing should feel like Excel: you just type into the cell. Applying should feel like git: you see exactly what will run before it runs. A badge alone gets ignored, so pending state has to be visible on the cells themselves and must stop you before you throw edits away."
+    },
+    {
+     "topic": "controls",
+     "claim": "The grid context menu should list every action and show its shortcut. 'Copy as ▸' offers TSV (Ctrl+C), CSV, JSON, Markdown, INSERT, UPDATE, `IN (...)` list and WHERE clause. Also: 'Filter by this value' (Alt+F), 'Exclude value', 'Open referenced row' (Ctrl+B on FK cells), 'Inspect cell' (Space, opens the drawer) and 'Count distinct in column'. Add a Ctrl+Shift+P command palette as the index of every action with its shortcut. The palette is how you discover actions; it is not the only way to reach them.",
+     "why": "Jan said himself that useful features get buried. 'Copy as INSERT' must be one right-click away from any selection, not two dialogs deep in an Export wizard. A palette (Raycast/Linear style) is great for keyboard users, but if it is the only route to an action, a mouse user can't find that action."
+    },
+    {
+     "topic": "controls",
+     "claim": "Export (Ctrl+Alt+S) opens one compact popover, not a wizard. Format: CSV, TSV, JSON, INSERT, Excel. Scope: selection, buffered rows, or 'Re-run uncapped → stream to file'. Plus target table name for INSERT, batch size, and header on/off. The last settings are remembered per format. When the result is capped at 10k, the popover says so and offers to re-run uncapped.",
+     "why": "Exporting a 10k-row buffer when the table has 2M rows silently produces wrong output. The cap has to be visible at the moment you export, and a full export should stream server-side so it never goes through the UI buffer."
+    },
+    {
+     "topic": "layout",
+     "claim": "Add a permanent 22px status bar at the bottom, VS Code/DataGrip style. Left to right: connection chip in its env color (name, host:port, PG 17.2), db.search_path, backend PID, tx state (IDLE / IN TX 00:42 / FAILED in pulsing red / READ ONLY 🔒), autocommit on/off, staged-edit count, cursor Ln/Col. On the right: selection aggregates for the selected cell range (Count, Sum, Avg, Min, Max, Distinct), as in Excel and DataGrip.",
+     "why": "Status you have to go looking for doesn't help, because the moment you need it is the moment you forgot to look. Selection aggregates replace a huge number of throwaway `SELECT sum(...)` queries and cost 200px of a bar that's on screen anyway."
+    },
+    {
+     "topic": "layout",
+     "claim": "The results pane gets its own tab strip: Result 1 … Result N (one per statement in a multi-statement run, each labelled with the first 30 characters of its SQL), Messages (NOTICE/RAISE output, errors with clickable line:col that jumps into Monaco, per-statement timing table), and History. Right-click a result tab to pin it, so the next run opens a new tab instead of replacing it. Ctrl+Shift+M maximizes the results pane (or the editor), and double-clicking the splitter does the same.",
+     "why": "Under the strawman, a script returning three result sets, or a DO block raising NOTICEs, has nowhere to show its output. A single result header is fine for demos and falls short for real scripts. Pinning lets you compare before and after an UPDATE without a second tab."
+    },
+    {
+     "topic": "layout",
+     "claim": "Put a 40px activity rail on the far left with Connections, Schema, History (Ctrl+H), Saved queries and Activity/Locks. The sidebar shows one of them at a time, 260px wide, resizable and collapsible with Ctrl+B. History lists each query per connection with timestamp, duration, row count and ok/error status, is searchable, and opens a query into the current editor on Enter or into a new tab on Ctrl+Enter. Ctrl+P is 'Go to object': fuzzy search across tables, views, functions and columns on the active connection.",
+     "why": "Putting connections and a 400-table schema tree in one column means each squeezes the other. History is the most-used recovery tool in any SQL client ('what did I run yesterday?'). If it has no home in the layout, it gets left out of the app altogether."
+    },
+    {
+     "topic": "layout",
+     "claim": "The drawer gets two modes. Overlay (default, 420px, closes on Esc) is for quick looks. Pinned (pin icon or Ctrl+Alt+I) docks it so it pushes the grid narrower instead of covering it, and it remembers its width. The cell inspector follows the grid selection live: arrow keys move through rows and the inspector updates. JSON/jsonb values get a collapsible tree, bytea a hex view, long text wraps.",
+     "why": "An overlay drawer covers the columns of the row you're inspecting. Walking down 20 rows of a jsonb column with the drawer open is a core workflow, and an overlay that must be reopened for each row makes it painful."
+    },
+    {
+     "topic": "layout",
+     "claim": "Opening a table from the schema tree opens a data tab, not a SQL tab. It has a WHERE input and an ORDER BY input above the grid, both with Monaco-lite autocomplete, plus 'Show SQL' to drop the generated query into a real editor. Data tabs and SQL tabs share one tab strip, distinguished by icon, and both carry the connection color as a 2px underline.",
+     "why": "Most 'look at the data' moments should not require typing SELECT * FROM. DataGrip's table editor with its filter row is the fastest browse-and-edit loop in any client."
+    },
+    {
+     "topic": "looks",
+     "claim": "Density by default: 22px grid rows (Compact 20, Comfortable 26, toggled with Ctrl+Alt+=/-), 24px header rows, 13px UI font (Inter or Geist), 12px monospace for data (JetBrains Mono or Geist Mono) with tabular-nums. Numbers right-aligned. Column headers carry a second line in 10px mono with the type (int4, timestamptz, jsonb) plus PK/FK/NOT NULL glyphs. A 1080p screen should show at least 40 data rows with the editor at 35% height.",
+     "why": "Rows on screen are the main measure of a data client. Postico-style 32px rows show half as much data and add half as much scrolling. Types in the header save a trip to the schema tree whenever you're writing a WHERE clause."
+    },
+    {
+     "topic": "looks",
+     "claim": "Show values distinctly. NULL is dim italic 'NULL' in a muted token color. An empty string shows a faint '' marker. Booleans show ✓/✗ glyphs, timestamps include the zone, and truncated text ends in '…' with Space to open it in the inspector. Rows alternate with a 2–3% luminance stripe. The selected range gets an accent fill plus a 1px border; the active cell gets a 2px ring.",
+     "why": "Not being able to tell NULL from '' is a real data bug waiting to happen, and 'calm' monochrome grids hide it. Striping at 22px density is how your eye follows a row across 30 columns."
+    },
+    {
+     "topic": "looks",
+     "claim": "Color discipline: neutrals carry about 95% of the UI with 1px hairlines and radius ≤6px. Shadows appear only on floating layers (menus, palette, overlay drawer). The connection color is the one loud signal: a 3px band across the top of the window, the active tab's underline, the status bar connection chip, and a full red editor gutter on prod. Semantic colors are reserved: amber for staged edits, red for errors/FAILED tx/prod, green for success timing.",
+     "why": "For 'modern, not 1980', look to Zed and Linear: crisp hairlines and restraint, not gradients and glass. If everything is colorful, the prod warning stops registering, so color has to mean something every time it shows up."
+    },
+    {
+     "topic": "looks",
+     "claim": "Motion is functional and ≤150ms: the drawer slides in 150ms ease-out, menus and the palette fade in 80ms, there are no spring animations, and nothing animates on data load. The query running state shows an elapsed counter after 300ms (nothing before that, so fast queries don't flash) and an indeterminate 2px bar under the tab. prefers-reduced-motion disables all of it.",
+     "why": "A database client is used thousands of times a day. Any animation that delays seeing data is a tax on every query. Speed is the modern look here; Raycast feels modern because it's instant, not because it bounces."
+    }
+   ],
+   "hill_to_die_on": "Transaction and connection state are never hidden. A permanent status bar shows connection, environment color, search_path, PID, tx state with a live timer, autocommit and read-only. Visible Commit/Rollback buttons light up whenever a transaction is open. Closing a tab, switching connection or re-running with an open transaction or staged edits is always blocked with an explicit choice. A 'calm' UI that leaves you unsure whether you're idle-in-transaction on prod is a liability.",
+   "strawman_attacks": [
+    "'No global toolbar, actions contextual' is the same 'useful features buried' problem Jan named as his motivation. Run, Cancel, Explain, Commit and Rollback have no visible mouse path, and Cancel especially has to be one click away while a query is running.",
+    "There's no status bar, so transaction state, autocommit, read-only lock, search_path, backend PID and selection aggregates have nowhere to live. The prod lock only shows on a tab, which you stop seeing after an hour.",
+    "There is no transaction model. 'Staged edits with Apply' doesn't say whether Apply commits, runs in an open transaction, or what happens when Apply fails halfway.",
+    "Query history has no location at all, though it's the most-used recovery feature in any SQL client.",
+    "There's no Messages output and no handling of multiple result sets. NOTICE/RAISE output, per-statement errors with line numbers, and scripts that return 3 result sets don't fit a single result header.",
+    "'1,284 rows' is ambiguous once the 10k cap kicks in. The header must say '10,000 of more (capped) · fetch all / re-run uncapped', or exports and counts will silently lie.",
+    "The pending-edit badge is too quiet. Staged cells need tint and gutter marks, and re-running or closing with pending edits must block, not silently discard.",
+    "Putting the connection list and the schema tree in one sidebar column makes them compete for height. It needs an activity rail with switchable views (Connections / Schema / History / Saved / Activity).",
+    "An overlay-only drawer covers the grid columns you're inspecting. It needs a pinned/docked mode that pushes the grid and follows the selection live.",
+    "A fixed editor-over-grid split with no maximize toggle wastes half the screen when you're just reading data, and opening a table should give a data tab with a WHERE filter row, not force a hand-written SELECT."
+   ],
+   "persona": "The Power User",
+   "key": "power"
+  },
+  {
+   "positions": [
+    {
+     "topic": "controls",
+     "claim": "Build one command registry and treat Ctrl+K as the spine of the app. Every action (Run, Cancel, Copy as INSERT, Explain, Switch connection, Toggle theme, Unlock prod) is registered once with an id, label, shortcut and a when-clause. The palette, the right-click menus and the few inline buttons all render from that same registry, and the palette shows each shortcut on the right like Raycast and Linear do.",
+     "why": "Jan's main complaint is that existing clients hide useful features, like export as INSERT. Toolbars hide them behind icons nobody can read, and context menus hide them behind a right-click nobody tries. If you can type 'insert' in a fuzzy palette, you find the feature on day one. Also, if the registry is the single source of truth, the later MCP server and AI drawer can call the same commands without new plumbing."
+    },
+    {
+     "topic": "controls",
+     "claim": "Run and cancel work like this: Ctrl+Enter runs the statement under the cursor, and Monaco marks that statement's range with a 2px accent bar in the gutter, so you always know what will run. Ctrl+Shift+Enter runs everything. For mouse users there is one small 'Run' pill (28px tall) at the bottom-right of the editor. While a query runs, the pill becomes a live timer ('2.4s, Esc to cancel') and clicking it cancels. There is no separate stop button and no toolbar.",
+     "why": "Run and cancel never happen at the same time, so they can share one control that changes shape. The gutter bar answers the question every DataGrip user has asked: 'which statement did that just run?'"
+    },
+    {
+     "topic": "controls",
+     "claim": "Staged edits show up as a floating bar, bottom-center over the grid, and only when something is staged. It reads '3 changes · Review SQL · Discard · Apply (Ctrl+S)'. Each edited cell gets a 2px accent left edge and keeps the old value in its tooltip. 'Review SQL' opens the generated UPDATE/INSERT/DELETE in the drawer, read-only, in Monaco. When nothing is staged, the bar does not exist.",
+     "why": "A small badge in the result header is too quiet for state that is about to change data. A floating bar like Linear's bulk-action bar is hard to miss while it matters and leaves nothing behind when it doesn't. Ctrl+S matches what people already expect for 'commit what I changed'."
+    },
+    {
+     "topic": "controls",
+     "claim": "Copy and export use a single 'Copy as…' model. Ctrl+C copies TSV. Ctrl+Shift+C opens a mini-palette at the selection with CSV, JSON, Markdown, INSERT, UPDATE, IN (…) list and WHERE clause. 'Export…' is the same list with 'to file' added, and it streams the full backend buffer instead of only the visible window. The result header gets no permanent Copy or Export buttons.",
+     "why": "Turning a selection into SQL is the killer feature, and it belongs in a fuzzy list, not under File > Export > Format > Options. Turning a selection into an IN list or a WHERE clause is the thing nobody else ships, and with this model it costs one more row in the list."
+    },
+    {
+     "topic": "controls",
+     "claim": "Prod writes stay locked until you unlock them explicitly for one tab. You click the lock glyph on the red tab, or use the palette command 'Unlock writes for this tab'. The tab border then turns solid red and a countdown starts. Writes lock again automatically after 10 minutes or when the tab closes. There are no 'are you sure' dialogs on each Apply.",
+     "why": "Confirmation dialogs teach people to click OK without reading. A mode you enter on purpose, with a timer and a loud visual change, protects prod better and leaves the dev workflow alone."
+    },
+    {
+     "topic": "layout",
+     "claim": "The sidebar shows only the schema of the active tab's connection. The connection list goes away. At the top of the sidebar is a single switcher row (color dot, name, chevron, about 36px tall) that opens a fuzzy connection picker. Ctrl+B hides the sidebar entirely. Ctrl+P is 'go to anything': tables, views, functions, saved queries and history, across connections.",
+     "why": "After the first ten seconds of a session, a permanent connection list is wasted space, and it grows badly at 20+ connections. Zed and VS Code showed that fuzzy jump beats tree-walking. The tree stays for mouse browsing and does not have to be the main way to navigate."
+    },
+    {
+     "topic": "layout",
+     "claim": "Use one tab strip, merged into a 36px title row next to the window controls, Arc and Zed style. Each tab is one (connection, query) pair. Its connection color is a 2px top edge plus a 6px dot, and prod tabs also show the lock. There is no menu bar and no status bar. Ctrl+J toggles the results pane, double-clicking the split divider maximizes results, and Ctrl+Shift+J maximizes the editor.",
+     "why": "Vertical space is the scarce resource in a DB client, and every 24px status bar costs a grid row. The few facts a status bar would carry (connection, environment, running state) already live on the tab and the Run pill."
+    },
+    {
+     "topic": "layout",
+     "claim": "For multiple result sets, show compact numbered chips in the result header ('1 · 2 · 3 · 4 msgs'), not a second tab strip. NOTICEs and row counts from DML appear as one collapsible line above the grid. On an error, the grid is replaced by an error card, Monaco gets a squiggle at the Postgres error position, and clicking the card jumps to that position.",
+     "why": "Nested tab strips (DataGrip's Output / Result 1 / Result 2) are the clearest sign of a 2010-era UI. Most of the time there is one result set, so the chips appear only when there is more than one."
+    },
+    {
+     "topic": "layout",
+     "claim": "The drawer is 440px wide and overlays the grid with a shadow by default, so grid columns do not reflow. A pin toggle switches it to pushing content aside. It shows one thing at a time (Cell, Explain, History, SQL preview, later AI), with a small header and Esc to close. History lives in the drawer and in Ctrl+P, never in a permanent pane.",
+     "why": "If the drawer resized the grid on every open, the grid would jitter and lose its horizontal scroll position. Overlay-first keeps the grid stable for quick looks, and pinning covers the 'leave EXPLAIN open while I tweak the query' case."
+    },
+    {
+     "topic": "looks",
+     "claim": "Density: 28px grid rows (with a 24px compact setting), a 32px editor tab strip, 13px UI text in Inter or Geist, 13px Geist Mono or JetBrains Mono for the editor and grid cells, and tabular-nums everywhere numbers appear. Spacing sits on a 4px scale; panes get 12px padding and lists 8px.",
+     "why": "It should be dense enough to compete with DataGrip on rows per screen and calm enough to read like Linear. A 28px row is the point where a data grid stops feeling cramped without becoming a spreadsheet toy."
+    },
+    {
+     "topic": "looks",
+     "claim": "Color: a neutral zinc grayscale, plus exactly one accent (indigo, around #6366F1 or #7C83FF in dark mode) used only for focus, selection, the current statement and staged edits. The green, amber and red environment colors are the only other hues, and they appear as edges and dots, never as filled tabs or backgrounds. Syntax highlighting is muted, with 4-5 low-chroma colors. NULL renders as a dim italic 'null', not as a colored chip.",
+     "why": "When everything is colored, nothing stands out. Keeping the env colors scarce is what makes the red prod edge actually register. Rainbow syntax themes and colored type badges are what make Beekeeper and DBeaver look busy."
+    },
+    {
+     "topic": "looks",
+     "claim": "Use 1px hairline borders at about 8% contrast for structure. Shadows only on overlays (palette, drawer, menus, the pending bar). Corner radius is 6px on controls and 10px on overlays. Motion is 120-160ms ease-out on overlays only; the grid, scrolling and selection get none. prefers-reduced-motion is honored.",
+     "why": "'Modern' comes from restraint and crispness, not glassmorphism or gradients. Motion on data surfaces feels laggy; motion on overlays helps you track where something came from."
+    },
+    {
+     "topic": "looks",
+     "claim": "Treat dark mode as its own design rather than an inverted light theme. The background is near-black #0B0B0C, and elevation steps (+3% lightness per surface level) replace borders where possible. Light mode uses warm off-white #FAFAF9 with hairlines. Both are built on the same semantic tokens (--surface-0..3, --fg-muted, --accent, --env-local/dev/prod, --edit-staged).",
+     "why": "Most clients add dark mode later as a hack, and it shows in the muddy greys. Starting from semantic tokens keeps Tailwind classes theme-agnostic, so the desktop shell can follow the OS theme for free."
+    }
+   ],
+   "hill_to_die_on": "There is no permanent icon toolbar and no status bar, ever. The command palette, backed by a single action registry with shortcuts shown inline, is the spine of the app. Chrome appears only to show live state (env color on the tab, the running timer, the pending-edits bar) and disappears when that state is gone. Every row of permanent chrome costs grid rows and makes features harder to find, which is exactly how existing DB clients ended up looking old.",
+   "strawman_attacks": [
+    "Leaving actions only in the result header, the right-click menu and shortcuts, with no command palette, recreates the problem Jan complained about. Right-click is where features go to be forgotten, and 'Export as INSERT' would end up buried again.",
+    "The left sidebar permanently stacks two unrelated things. The connection list is useless after you pick a connection and scales badly with 20+ entries, while the schema tree gets squeezed. Replace the list with a one-row switcher and fuzzy pickers (Ctrl+P / connection picker).",
+    "The pending-edit badge is far too quiet for staged changes about to hit a database. It needs a floating Apply / Review SQL / Discard bar that cannot be missed and disappears at zero.",
+    "'1,284 rows · query 18 ms · fetch 6 ms' is fine-grained noise in permanent view. Show '1,284 rows · 24 ms' and put the query/fetch breakdown in the hover tooltip. Permanent Copy/Export buttons there should become one 'Copy as…' mini-palette.",
+    "Multi-result sets, NOTICEs and errors are unaddressed, so the strawman will default to a second tab strip like DataGrip's. Use numbered chips, an inline messages line, and an error card linked to a Monaco squiggle.",
+    "Running and cancel states are undefined: where is the spinner, and where is cancel? This needs a single control that changes shape (Run pill becomes timer, Esc cancels), not a toolbar stop button.",
+    "The resizable split has no maximize or toggle behavior. Without Ctrl+J and double-click-to-maximize, users spend their day dragging a divider.",
+    "There is no defined prod unlock flow. A lock icon without a deliberate, timed, per-tab unlock mode will turn into either confirm-dialog fatigue or a lock everyone switches off.",
+    "There is no home for history, and the drawer's overlay vs push behavior is unspecified. If the drawer reflows the grid on every open, the grid will jitter and lose scroll position."
+   ],
+   "persona": "The Minimalist Designer",
+   "key": "minimal"
+  },
+  {
+   "positions": [
+    {
+     "topic": "controls",
+     "claim": "Execution is explicit and scoped: Ctrl+Enter runs the statement under the cursor (highlighted with a 2px gutter bar before running, so you SEE what will execute), Ctrl+Shift+Enter runs the selection or whole script, and a script run shows 'Run 7 statements?' only when any statement is non-SELECT. The Run button in the editor tab strip turns into a red 'Cancel (Esc Esc)' button while running, with a live elapsed timer. Cancel sends pg_cancel_backend. If the query is still alive 5s later, the button offers 'Terminate backend (pg_terminate_backend)' as a second, separate step.",
+     "why": "The most common production accident is running the whole buffer when you meant one line. A UI that guesses where the statement boundary is, without showing you, is lying to you. A cancel that silently fails because the backend is stuck in a lock wait gives you false confidence."
+    },
+    {
+     "topic": "controls",
+     "claim": "Destructive-statement friction scales with risk and connection color. Before execution the backend parses the statement and classifies it: SELECT goes through; INSERT, UPDATE or DELETE with a WHERE gets an inline confirmation on amber/red connections; UPDATE or DELETE without a WHERE, TRUNCATE, DROP or ALTER on red needs you to type the target table name in a modal (GitHub repo-delete style). On green, everything runs freely. On red, DML runs inside an auto BEGIN, the result shows 'N rows affected — Commit / Rollback', and an uncommitted transaction auto-rolls back after a configurable idle timeout (default 60s) with a countdown.",
+     "why": "One confirm dialog for everything trains your thumb to hit Enter. Friction only works if it is rare and proportional. Implicit transactions on prod turn 'oops' into 'rollback' instead of 'restore from backup'."
+    },
+    {
+     "topic": "controls",
+     "claim": "The grid edit flow ends in a mandatory SQL preview. Staged edits show as amber cell backgrounds with the original value struck through on hover. The pending badge 'Pending: 3 updates, 1 delete' opens the drawer with the exact generated SQL (UPDATE ... WHERE pk = $1, parameter values inlined for display), plus a checkbox 'Wrap in transaction' (on by default, locked on for red). Apply runs the statements and reports the rows affected per statement. Any statement affecting a row count other than 1 aborts and rolls back the whole batch.",
+     "why": "A PK-based edit that hits 0 rows (concurrent delete) or more than 1 row (a 'PK' that isn't unique, or a view) must fail loudly, not partially apply. Showing the SQL is the difference between a tool and a toy."
+    },
+    {
+     "topic": "controls",
+     "claim": "Ctrl+K command palette (Raycast/Linear style) is the universal index of every action, including 'Switch connection', 'Set role', 'Toggle read-only', 'Show locks', 'Explain analyze'. Context menus exist for discoverability, but every context-menu item shows its shortcut and also exists in the palette. No global toolbar, but no action may live ONLY in a right-click menu.",
+     "why": "Jan uses the mouse a lot, so context menus stay. Hidden-only-in-right-click is how existing clients bury features. The palette is the single searchable truth of what the app can do."
+    },
+    {
+     "topic": "controls",
+     "claim": "EXPLAIN is two distinct, labelled actions: 'Explain' (Ctrl+E, plan only, safe) and 'Explain Analyze' (Ctrl+Shift+E). On any non-SELECT, Explain Analyze runs automatically inside BEGIN ... ROLLBACK, and the drawer header says so in plain text: 'Executed inside rolled-back transaction'. On red connections, Explain Analyze of DML requires the same typed confirmation as the DML itself.",
+     "why": "EXPLAIN ANALYZE of a DELETE actually deletes. Every DBA has seen someone learn that the hard way. A tool that makes this one keystroke without a guard is negligent."
+    },
+    {
+     "topic": "layout",
+     "claim": "A permanent 28px session status bar sits at the bottom of every editor tab, never collapsible: [color chip] connection name · host:port/dbname · current_user (and SET ROLE if it differs from session_user) · search_path first entry · transaction state (Idle / In transaction 00:42 / Failed transaction, ROLLBACK required) · backend PID · server version · read-only lock icon. It updates from the backend after every statement, using ReadyForQuery txn status and SHOW, not from cached connection config.",
+     "why": "This is the single most important pixel strip in the app. 'Which DB am I in, as whom, and am I inside an open transaction' must be answerable in a glance at any moment. The connection list in the sidebar shows what you configured; the status bar shows what is actually true on the wire."
+    },
+    {
+     "topic": "layout",
+     "claim": "Below the editor the result area has its own tabs: one tab per result set ('Result 1 · 1,284 rows', 'Result 2 · UPDATE 3'), then a 'Messages' tab and a 'History' tab. The Messages tab gets an unread count badge, and it turns amber for WARNING/NOTICE and red for ERROR. On error the results area auto-switches to Messages and shows the full Postgres error: SQLSTATE, message, DETAIL, HINT, CONTEXT, plus a 'Jump to position' link that puts the Monaco cursor at the error offset and adds a red squiggle.",
+     "why": "NOTICEs from RAISE, deprecation warnings, and 'there is no transaction in progress' are where the truth hides. Clients that show only a toast reading 'ERROR: syntax error' throw away DETAIL and HINT, which is exactly the half you need."
+    },
+    {
+     "topic": "layout",
+     "claim": "The drawer is right-side, 420px default, resizable to 70% of the width, and can be pinned. Pinned = it pushes content instead of overlaying it, so EXPLAIN can be read alongside the query. It holds the cell inspector, EXPLAIN, the pending-edit SQL preview, and lock details. Activity/Locks is NOT a drawer: it is a full tab type (like an editor tab) with auto-refresh (2s, pausable), because you watch it for minutes during an incident.",
+     "why": "An overlay drawer that covers the SQL you are explaining is useless. Locks during an incident deserve the full screen and have to persist across drawer toggles. The drawer is for inspecting things, not for monitoring."
+    },
+    {
+     "topic": "layout",
+     "claim": "Every editor tab is bound to exactly one connection and session, and the tab header shows the connection's color as a 3px top border plus a short label ('prod-billing'). A tab cannot silently switch connections. Changing the connection re-colors the tab and the status bar and appends a divider line to History ('-- switched to dev-cmdb as app_rw'). Opening a red connection tab on top of another red one is fine, but two tabs with the same color and different DBs must get distinct labels.",
+     "why": "The classic disaster: two tabs that look identical, one dev and one prod, and you paste into the wrong one. Binding is per tab and visible on the tab itself, not only in the sidebar."
+    },
+    {
+     "topic": "layout",
+     "claim": "History is persistent and per connection. Every executed statement is stored with timestamp, connection, role, duration, row count and outcome (ok/error/cancelled/rolled back), and is searchable with Ctrl+H. Statements run on red connections are additionally appended to a local append-only audit log file.",
+     "why": "After an incident the first question is 'what exactly did I run, and where'. If the client can't answer that, you are reconstructing from pg_stat_statements and memory."
+    },
+    {
+     "topic": "looks",
+     "claim": "The connection color is a safety signal, not decoration, and it is used sparingly but unmistakably. Green and amber show as a chip plus the tab border. Red (prod) additionally gets a 2px red inset frame around the entire editor+results area and a subtle diagonal-hatch background in the status bar. No other UI element anywhere may use that saturated red. Errors use a distinct red-orange plus an icon, so the 'prod' red keeps its meaning.",
+     "why": "If red means both 'prod' and 'error' and 'delete button', it means nothing. Ambient, peripheral-vision cues work even when you are focused on the editor and not looking at the sidebar."
+    },
+    {
+     "topic": "looks",
+     "claim": "Dense but legible: 13px UI font (Inter or Geist), 12.5-13px monospace for grid and editor (JetBrains Mono or Geist Mono, tabular numbers), 26px grid rows, 32px tab strip, 4px spacing grid. NULL renders as a dimmed italic 'NULL' pill, the empty string as a faint '∅ empty' marker, whitespace-only values show visible leading/trailing dots, and truncated values end with an ellipsis glyph that opens the inspector. Numbers are right-aligned, timestamps show their timezone offset.",
+     "why": "Truth over pretty. Confusing NULL with '' or with the text 'NULL' is a real source of bad UPDATEs. A modern look is fine as long as the grid never lies about the data."
+    },
+    {
+     "topic": "looks",
+     "claim": "Motion only signals state changes: a 150ms drawer slide, a progress shimmer on the running tab, and a pulse on the Messages badge when a notice arrives. There is no animation on success. A long-running query shows an elapsed-time counter, never an indeterminate spinner alone. Light and dark themes both need WCAG AA contrast for the amber/red connection colors against both backgrounds, verified by token tests.",
+     "why": "A spinner with no timer hides whether you are waiting 2s or in a lock wait for 2 minutes. Amber that is unreadable on dark mode defeats the whole color-safety system."
+    },
+    {
+     "topic": "looks",
+     "claim": "Status and transaction states use explicit text labels, not just icons or color: 'READ ONLY', 'IN TRANSACTION 01:12', 'FAILED — ROLLBACK REQUIRED', 'AUTOCOMMIT'. Each label is a pill in the status bar with the icon AND the word.",
+     "why": "Explicit beats pretty. Colorblind users, screenshots in incident channels, and tired eyes at 3am all need words. A lone lock icon is a puzzle; 'READ ONLY' is a fact."
+    }
+   ],
+   "hill_to_die_on": "The always-visible, wire-truthful session status bar on every editor tab: connection color, host/db, current_user and role, the real transaction state from ReadyForQuery (idle / in transaction with a timer / failed), the backend PID, and read-only. It is never collapsible, never hidden in a drawer, and never derived from config instead of the live session. Everything else is negotiable; not knowing whether you're inside an open transaction on prod as a superuser is how databases die.",
+   "strawman_attacks": [
+    "Nowhere does it show the transaction state. 'No global toolbar, actions contextual' means a forgotten open BEGIN holding row locks on prod is invisible until someone pages you about blocked queries.",
+    "Identity only lives in the left sidebar connection list. The sidebar shows the configured connection, not the live session's current_user, SET ROLE, or search_path, and it can be collapsed or scrolled away.",
+    "There's no Messages surface. The result header shows rows and timings, but NOTICE, WARNING and the full error (DETAIL, HINT, SQLSTATE, position) have no designated home. They'll end up as toasts that disappear.",
+    "Multi-statement scripts are unaddressed. One grid below the editor implies the last result wins, so earlier result sets and the 'UPDATE 3' command tags are lost.",
+    "'Run' semantics are undefined: current statement vs selection vs whole buffer. That ambiguity is the number-one cause of accidental full-script execution.",
+    "The pending-edit badge plus Apply has no stated transaction wrapping and no 'rows affected must equal 1' check. A partial apply after a concurrent delete leaves the data half-edited.",
+    "Cancel isn't specified at all: there is no cancel control, no elapsed timer, and no escalation to terminate when cancel doesn't take (lock waits).",
+    "EXPLAIN is lumped into the drawer with no distinction between plan-only and ANALYZE. Nothing protects you from EXPLAIN ANALYZE actually executing DML.",
+    "'Prod read-only by default with a lock' is binary. There is no friction ladder for when you DO unlock prod, so after the unlock it's as dangerous as dev.",
+    "Activity/locks is listed as a 'later feature' with no place in the layout. If it lands in the drawer, it becomes a cramped side panel exactly when you need it full-screen during an incident.",
+    "Per-connection color on the 'connection + editor tab' alone is too small for prod. A thin colored dot doesn't register in peripheral vision while you're typing in Monaco."
+   ],
+   "persona": "The Paranoid DBA",
+   "key": "dba"
+  },
+  {
+   "positions": [
+    {
+     "topic": "controls",
+     "claim": "Build one command registry before any UI: each command has an id, label, icon, default shortcut, a 'when' check (for example `tab.running`, `grid.hasSelection`, `conn.readOnly`) and a run function. The command palette, the CDK Menu context menus, keybindings and the few visible buttons all read from it. The palette opens with Ctrl+K: a CDK Overlay containing a CDK Listbox, about 250 lines including fuzzy match. Monaco's Ctrl+K chord prefix and its F1/Ctrl+Shift+P palette get unbound.",
+     "why": "Without a registry, every action gets written three times (button, menu, shortcut) and the three copies drift apart. With it, the palette, a shortcut cheat sheet and later the MCP tool surface come almost free. It is the cheapest way to find features for a user who works half by mouse, and it costs less than a toolbar."
+    },
+    {
+     "topic": "controls",
+     "claim": "Run and Cancel share one visible button, pinned at the right end of the editor tab strip. While a query runs, the button turns into Cancel with a live timer ('Cancel 3.2s'). Shortcuts: Ctrl+Enter runs the statement under the cursor, found with a simple splitter (semicolons and blank lines, aware of strings, comments and $$ quoting) rather than a real SQL parser. Ctrl+Shift+Enter runs the whole buffer. Esc cancels, but only when Monaco's suggest or find widget is not open (checked with a context key). Cancel calls pg_cancel_backend on the backend through the existing session.",
+     "why": "The strawman's 'no global toolbar' leaves Run reachable only by shortcut, which fails the mouse half of Jan's habits. One button that changes state costs 20 lines and also tells you whether something is running. A full SQL parser for statement detection is weeks of work. A splitter covers 99% of dev-DB use."
+    },
+    {
+     "topic": "controls",
+     "claim": "Shortcuts are designed for the browser tab first. Never bind Ctrl+W, Ctrl+T, Ctrl+N, Ctrl+Tab or Ctrl+Shift+T, because Chrome and Edge do not let a page intercept them. Instead: new query tab = Alt+N, close tab = Alt+W or middle-click, switch tabs = Alt+1..9 or Ctrl+PageUp/PageDown, toggle sidebar = Ctrl+B, toggle drawer = Ctrl+J, apply staged edits = Ctrl+S (the browser's Save dialog can be suppressed). The same map works unchanged once the Photino shell arrives.",
+     "why": "If shortcuts are designed against a desktop app, half of them stop working silently in the browser-tab phase, and Jan builds muscle memory that gets broken twice. Settling the map once, inside the browser's limits, costs nothing."
+    },
+    {
+     "topic": "controls",
+     "claim": "Edit flow: double-click or F2 edits a cell inline, and a changed cell gets an amber left border. The result header shows a pending-edits pill, '3 changes · Review'. Clicking it, or pressing Ctrl+S, opens the drawer with the generated SQL in a read-only Monaco model. Below that sit Apply (runs it all in one transaction) and Discard. There is no modal. On a prod connection or a result without a PK, editing is impossible from the start: cells do not go into edit mode, and the tooltip says why ('read-only: no primary key' / 'prod lock').",
+     "why": "Showing the review in the drawer reuses a surface we already pay for, rather than adding a modal stack. Blocking edits up front is far cheaper and safer than letting Jan stage 40 edits and only then refusing to apply them."
+    },
+    {
+     "topic": "controls",
+     "claim": "Export is a split button in the result header. The main part is 'Copy' (TSV of the selection, or the whole buffer). The caret opens a CDK Menu with: Copy as CSV, JSON, Markdown, INSERT, UPDATE by PK, and 'Save as file…'. Files stream from a backend endpoint (`/results/{id}/export?fmt=insert`) over the buffered result; the client never assembles a Blob from fetched windows. The grid's context menu offers the same 'Copy as INSERT' for a range selection. No export wizard.",
+     "why": "'Export as INSERT' is the feature Jan named as the reason to build this, so it gets one click and zero dialogs. Generating it server-side means the client has no memory spike, no partial-window bugs, and C# already knows the column types for correct literal quoting."
+    },
+    {
+     "topic": "layout",
+     "claim": "There is one Monaco instance for the whole app. Each tab owns an ITextModel plus a saved viewState, and switching tabs calls setModel/restoreViewState. Monaco is lazy-loaded outside the initial bundle, with `automaticLayout: false`. A single ResizeObserver on the editor host calls `editor.layout()` once per rAF.",
+     "why": "Twenty Monaco instances means twenty sets of DOM, workers and listeners: hundreds of MB and a slow tab switch. `automaticLayout` polls and causes layout thrash while the split or drawer is being dragged. Swapping models is how VS Code itself does it."
+    },
+    {
+     "topic": "layout",
+     "claim": "The shell is a single CSS grid: `grid-template-columns: var(--sidebar-w) 1fr`, with the editor/results split driven by `--split` on the main area. Gutters are 4px hit areas that use pointer capture and write the CSS variable on rAF. No angular-split or other resize library. Sidebar and split sizes persist in localStorage, wrapped in try/catch. Sidebar collapses to 0 with Ctrl+B.",
+     "why": "A resize library adds a dependency, its own change detection churn and styling fights with Tailwind. About 60 lines of pointer-event code with CSS variables gives smooth 60fps resizing, because it only writes a variable and lets the browser run layout once per frame."
+    },
+    {
+     "topic": "layout",
+     "claim": "The drawer is an overlay by default: positioned absolutely over the right edge of the results and editor area, animated with `transform: translateX` only, and resizable with the same gutter code. One piece of content at a time (cell inspector | EXPLAIN | edit review | history | later AI), chosen by a small segmented header. A 'pin' toggle switches it to push mode, where the grid and Monaco relayout once on `transitionend` and not on every frame.",
+     "why": "A push drawer that animates width forces Monaco relayout and grid column recalculation on every frame of the slide. That is the jank everyone notices. An overlay with a single relayout when pinned keeps the slide at 60fps and costs nothing extra."
+    },
+    {
+     "topic": "layout",
+     "claim": "Multiple result sets and server messages live in the result header as a compact strip of chips: `[Result 1 · 1,284] [Result 2 · 3] [Messages 2]`. Messages collects NOTICEs, errors with the position mapped back to a Monaco marker, and DML row counts ('UPDATE 12'). An error automatically selects Messages and puts a red squiggle in the editor. History is not a pane: it is palette-searchable ('history: orders') and opens in the drawer.",
+     "why": "Nested tabs (results tabs inside editor tabs) are the cluttered DataGrip look Jan wants to get away from, and they are another component to build and make accessible. Chips reuse the same list markup. An error mapped to a Monaco marker is more useful than any messages pane."
+    },
+    {
+     "topic": "layout",
+     "claim": "The sidebar follows the active tab. A connection switcher sits at the top, 32px: color dot, name and lock icon, opening a CDK Menu or the palette ('conn: …'). The rest of the height is the schema tree for the active tab's connection. The tree is a flattened, lazily loaded node array rendered through a plain fixed-height (24px) virtual list, not CDK Tree.",
+     "why": "The strawman stacks a connection list and a schema tree in one sidebar, where they fight for height and it is unclear which connection the tree shows. CDK Tree combined with virtual scroll is awkward and slow on schemas with 2,000 tables. A flattened array with a depth field is about 100 lines and scrolls perfectly."
+    },
+    {
+     "topic": "looks",
+     "claim": "One fixed density, no 'compact/comfortable' setting. UI text 13px, grid and editor 12.5–13px monospace. Grid rows 24px, tree rows 24px, editor tab strip 32px, result header 30px, cell padding 8px horizontal. Numbers use `font-variant-numeric: tabular-nums` and are right-aligned. NULL appears as a dimmed small-caps 'null' so it can never be confused with the string 'NULL'.",
+     "why": "A density setting doubles the visual QA and the grid's row-height maths for one user who will pick a value once. 24px rows is where TablePlus and Linear sit: dense without feeling cramped. Tabular numbers make columns readable at a glance for free."
+    },
+    {
+     "topic": "looks",
+     "claim": "Use the system UI font (Segoe UI Variable on Windows, `system-ui` stack) and self-host exactly one monospace font as a woff2 subset (JetBrains Mono or Geist Mono, around 40KB) with `font-display: block` behind a tiny preload. Monaco and the grid share it. No Inter webfont.",
+     "why": "A UI webfont adds a flash of unstyled text and payload for nothing; Segoe UI Variable already looks current on Windows 11. The monospace font is the one that matters, because the grid measures column widths in its metrics, and a late font swap would make every column width wrong."
+    },
+    {
+     "topic": "looks",
+     "claim": "Color: a neutral zinc scale for everything plus one accent (blue/indigo) for focus, selection and primary actions. Saturated hues are reserved for meaning: connection color green/amber/red (a 3px bar on the editor tab, the switcher dot, and a 2px top border on the editor), amber for staged edits, red for errors. About 25 semantic tokens as CSS variables (`--bg`, `--bg-raised`, `--fg`, `--fg-muted`, `--border`, `--accent`, `--conn-local/dev/prod`, `--edit`, `--danger`…), mapped into the Tailwind theme so classes read `bg-raised`, not `bg-zinc-900`. Dark mode swaps only these variables under `[data-theme]`. Every pair is checked against WCAG AA.",
+     "why": "If decoration uses color too, the prod-red warning stops standing out, and that warning is the one color that prevents real damage. Semantic tokens let a single file define the theme. Raw Tailwind palette classes in templates make dark mode a search-and-replace job."
+    },
+    {
+     "topic": "looks",
+     "claim": "Motion only on the drawer, palette, menus and tooltips, using transform/opacity at 120–150ms ease-out and turned off under `prefers-reduced-motion`. Nothing animates in the grid: no row hover transitions, no shimmer skeletons (show a static 'Running… 1.2s' in the header instead). No backdrop-filter blur or glass on any overlay that sits above the grid or Monaco. Elevation is a 1px border plus one soft shadow token. Corner radius is 6px on overlays and 4px on controls.",
+     "why": "backdrop-filter over a scrolling 10k-row grid in Chromium/WebView2 forces the blur to recomposite on every scroll frame and drops to 30fps on a laptop iGPU. Shimmer means repaint on every frame. 'Modern' in 2026 means Zed/Linear crispness: sharp borders, restraint, fast response. It does not mean animation."
+    },
+    {
+     "topic": "looks",
+     "claim": "Icons: Lucide as inline SVG, imported one by one through a tiny `<y-icon name>` component backed by a static map of only the ~40 icons used. 16px at 1.5px stroke, `currentColor`. Tooltips start as a 40-line CDK Overlay directive with a 400ms delay that shows the shortcut from the command registry ('Run · Ctrl+Enter').",
+     "why": "Loading a whole icon font or the full lucide package bloats the bundle and blurs at small sizes. Tooltips that print the shortcut from the registry teach the keyboard to a mouse user without any onboarding UI."
+    }
+   ],
+   "hill_to_die_on": "The results grid is a hand-written imperative renderer that runs outside Angular templates and change detection. Rows are a fixed 24px; a recycled pool of absolutely positioned row and cell divs sized to the viewport (plus overscan) gets new text on scroll; column virtualization uses precomputed left offsets. A scroll writes `textContent` and a `transform` and nothing else, with zero allocations per frame. Angular signals only feed the header, the selection summary and the pending-edits pill. Every other UI idea must fit within that budget. That rules out variable row height, multi-line cells, inline images or JSON previews, animated rows, per-cell components, `cdk-virtual-scroll-viewport` (1D, no column virtualization), and anything that reflows the grid during an animation. Rich content goes to the drawer's cell inspector. If the grid drops below 60fps on a 10k × 40 result, the tool has failed at its reason for existing ('existing clients are slow'), and no amount of polish elsewhere will rescue it.",
+   "strawman_attacks": [
+    "Run and Cancel have no visible control. 'No global toolbar, contextual actions' leaves the most frequent action reachable only by shortcut, for a user who works half by mouse, and nothing shows whether a query is running or how to stop it.",
+    "'Actions contextual (result header, right-click, shortcuts)' without a command registry means each action gets three separate implementations that drift apart, and with no palette nothing is discoverable. The buried-features problem Jan complains about in other clients comes straight back.",
+    "The sidebar stacks a connection list on top of a schema tree. They compete for height, and it is undefined whether the tree follows the active editor tab's connection or a separately selected one. With per-tab connection colors that ambiguity is dangerous: you browse prod's schema while typing into a dev tab, or the other way round.",
+    "The layout has no home for multiple result sets, NOTICEs, errors or DML row counts. A results grid alone cannot show 'UPDATE 12' or a syntax error at line 3.",
+    "The result header crams in a row count, two timings, a pending badge, Copy and Export without saying what wins when space runs out. With the drawer open, or a narrow window, it will overflow or wrap and push the grid down by a variable amount, which breaks the grid's fixed-geometry maths.",
+    "'fetch 6 ms' is misleading, because fetching happens in windows: every scroll fetches again. Show query time and the buffered row count, and move per-window fetch timing into a tooltip or debug view.",
+    "Three independent resize sources (sidebar, editor/results split, drawer) are specified with no layout strategy. Done naively (Monaco automaticLayout, width transitions, a resize library), they cause layout thrash and janky drags on exactly the two most expensive components.",
+    "It assumes desktop-app shortcuts and editor tabs while shipping as a browser tab first. Ctrl+W, Ctrl+T and Ctrl+Tab belong to the browser and cannot be overridden, so the tab model needs a shortcut map that survives both phases.",
+    "The prod lock and the edit flow are not connected. The strawman shows a pending-edit badge but never says that on a locked prod connection, or a result without a PK, editing must be impossible to start, rather than refused only at Apply time.",
+    "Nothing is said about where the editor tab bar sits relative to the connection color. The color should mark the editor itself (a top border) as well as the tab, because tabs scroll out of view once 10+ are open."
+   ],
+   "persona": "The Implementing Engineer",
+   "key": "eng"
+  }
+ ],
+ "rebuttals": [
+  {
+   "attacks": [
+    {
+     "target": "The Minimalist Designer",
+     "their_claim": "No status bar, ever. Every 24px of permanent chrome costs a grid row, and connection, env and running state already live on the tab and the Run pill.",
+     "counter": "Your own numbers undo this. You ask for 28px grid rows. In a 600px results pane that is 21 rows, against 27 at 22px or 25 at 24px. Your row height costs 4 to 6 rows; a 22px status bar costs one. The bigger problem is that the facts that matter are not on the tab or the pill. The Run pill shows 'running', not 'idle in transaction since 00:42'. The tab shows the env color, not that you ran SET ROLE, not search_path, not PID, and not that the session is FAILED and needs ROLLBACK. Transaction state lasts longer than any one query: it is still there after the pill goes back to 'Run'. Under 'chrome appears only while state is live', an open transaction is live state that can last an hour, so by your own rule it needs a permanent home. Selection aggregates (Sum/Avg/Count over a range) would also have nowhere to go."
+    },
+    {
+     "target": "The Minimalist Designer",
+     "their_claim": "One accent (indigo) for focus, selection, the current statement and staged edits.",
+     "counter": "If staged edits and selection share a color, a selected range of staged cells looks exactly like a selected range of clean cells. That is the moment you are about to press Delete or Apply, and you can't tell them apart. Staged edits need their own semantic color (amber, as the DBA, the Engineer and I all proposed), and indigo stays for focus and selection only. You used this same 'color must mean one thing' argument for the env colors."
+    },
+    {
+     "target": "The Minimalist Designer",
+     "their_claim": "Tab strip merged into a 36px title row next to window controls (Arc/Zed); Ctrl+Shift+C opens the Copy-as mini-palette.",
+     "counter": "Both run into the fixed browser-tab-first decision. In a browser tab there are no window controls to merge into, and Chrome's own tab strip and URL bar are already above us. Ctrl+Shift+C is Chrome's DevTools 'inspect element' shortcut, which a page can't reliably take over. Use Ctrl+Alt+C, or right-click 'Copy as ▸', and keep the title-row merge as a later Photino-only refinement."
+    },
+    {
+     "target": "The Paranoid DBA",
+     "their_claim": "On red connections DML runs in an auto BEGIN, and an uncommitted transaction auto-rolls back after a 60s idle timeout.",
+     "counter": "Sixty seconds of client-side auto-rollback will quietly throw away correct work. You run an UPDATE on prod, switch to Slack to confirm the row count with a colleague, come back at 0:61, and the transaction is gone. If you then re-run, it hits a now-different state. A rollback nobody watched is the same thing as a write nobody watched: the UI's picture no longer matches the wire. Better: the status bar's 'IN TX' pill turns amber at 30s and red/pulsing at 2 min. A server-side backstop handles abandonment: SET idle_in_transaction_session_timeout = '10min' on red sessions, so Postgres kills a truly abandoned session and the bar shows the resulting FAILED/terminated state truthfully. Closing a tab, switching connection or re-running is blocked on an open transaction, as we both want."
+    },
+    {
+     "target": "The Paranoid DBA",
+     "their_claim": "A script run shows 'Run 7 statements?' whenever any statement is non-SELECT; the status bar is 28px.",
+     "counter": "On green and amber dev DBs Jan runs migration and seed scripts all day, so a prompt on every non-SELECT script is exactly the thumb-trained confirm you argue against elsewhere. Limit it to red, and let typed-name friction handle no-WHERE DML and DDL there. And 28px is a toolbar, not a status bar: VS Code fits richer state into 22px. Use 22–24px with text-labeled pills ('IN TX 00:42', 'READ ONLY'). I take your labels-not-icons point fully."
+    },
+    {
+     "target": "The Implementing Engineer",
+     "their_claim": "Esc cancels the running query (when Monaco's suggest/find widget isn't open).",
+     "counter": "In this app Esc also closes the drawer, closes menus and the palette, clears the grid selection and cancels a cell edit. Checking only Monaco context keys misses all of those. Jan presses Esc to dismiss the cell inspector, and his 4-minute data-fix query, which was holding locks, is cancelled. Cancel must be Esc Esc within 400ms, or single Esc only when the editor has focus and no overlay, menu or edit is active. The morphing Run/Cancel button stays the visible mouse path."
+    },
+    {
+     "target": "The Implementing Engineer",
+     "their_claim": "History is not a pane: it is palette-searchable and opens in the one-at-a-time drawer; multi-result chips instead of tabs.",
+     "counter": "The drawer holds one thing at a time, so opening History to find yesterday's query evicts the cell inspector or the EXPLAIN you had pinned. A palette-only route is invisible to the mouse half of Jan's habits. History needs a sidebar view (rail icon, Ctrl+H), which costs nothing when the sidebar shows Schema. I accept chips for result sets, because a chip strip is a tab strip with fewer pixels. But the Messages chip needs an unread count colored amber/red, and chips need right-click 'Pin', or before/after comparison of an UPDATE goes away."
+    },
+    {
+     "target": "The Implementing Engineer",
+     "their_claim": "Prod connection or no-PK result: editing impossible from the start.",
+     "counter": "Right for no-PK. For prod, 'impossible' pushes Jan to hand-write UPDATEs on prod. That is less safe than a grid edit with a generated, previewed, PK-scoped, rowcount-checked UPDATE. Prod editing should be off by default and unlockable per tab (the Minimalist's timed unlock). Once unlocked it goes through the same Apply-in-transaction path with the DBA's 'rowcount != 1 aborts the batch' rule."
+    }
+   ],
+   "concessions": [
+    "A single command registry (id, label, icon, shortcut, when-clause) as the source of truth, which the Minimalist, DBA and Engineer all proposed. My buttons, context menus, palette and tooltips should all render from it. It also feeds the MCP server later. I fully agree.",
+    "Run and Cancel share one control that changes shape (three of three opponents). I drop my separate Cancel button and my 32px action strip. The button sits at the right end of the editor tab strip, so it costs no extra vertical space.",
+    "Commit/Rollback do not need permanent buttons. They can appear only while a transaction is open, as long as the transaction state itself is permanently visible in the status bar. Clicking the 'IN TX 00:42' pill gives Commit / Rollback. This is the Minimalist's 'chrome only for live state' applied correctly.",
+    "Drawer is an overlay by default with a pin-to-push toggle, and it relayouts once on transitionend rather than per frame (Engineer). That is better than my version, which animated the push.",
+    "One fixed density, no Compact/Comfortable toggle (Engineer). It doubles QA for one user who will choose once. I accept 24px rows instead of my 22px, since it still gives about 35+ rows on 1080p with the editor at 35%.",
+    "System UI font (Segoe UI Variable) plus one self-hosted mono with font-display: block (Engineer). The point about grid column metrics depending on the mono font is correct, and an Inter webfont adds nothing.",
+    "A browser-safe shortcut map (Engineer). My Ctrl+Shift+M maximize is Chrome's profile switcher, so I change it to Ctrl+Alt+M. Alt+N/Alt+W for tabs is fine.",
+    "Sidebar with a connection switcher at the top instead of a permanent connection list (Minimalist, Engineer). The schema tree follows the active tab's connection. I drop 'Connections' as a rail view.",
+    "Activity/Locks is a full tab type with 2s auto-refresh, not a drawer or sidebar view (DBA). You watch it for minutes during an incident.",
+    "EXPLAIN ANALYZE of DML runs inside BEGIN…ROLLBACK, labeled 'Executed inside rolled-back transaction', and Apply aborts the whole batch on any rowcount != 1 (DBA). Both are clearly right, and I missed them.",
+    "Status state comes from the wire (ReadyForQuery txn status + SHOW after each statement), not from cached config, and pills show text plus icon, not just icon (DBA).",
+    "Errors become a Monaco marker at the Postgres error position, and the error card jumps there on click (Minimalist, Engineer). With that, a separate full Messages tab matters less, as long as DETAIL/HINT/CONTEXT are shown in full.",
+    "The Engineer's grid budget (imperative recycled rows, no per-cell components) is compatible with everything I want: row striping is a parity class swapped on recycle, and types in the header are header-only. I accept that rich previews go to the inspector."
+   ],
+   "revised_hill": "A permanent, wire-truthful 22–24px status bar. It reflects the active tab's session and cannot be collapsed. It shows: connection chip in env color (name, host/db, PG version) · current_user, flagged if SET ROLE differs · search_path head · PID · transaction pill with text ('IDLE' / 'IN TX 00:42', amber at 30s and red at 2min / 'FAILED, ROLLBACK REQUIRED') · 'READ ONLY' / 'WRITES UNLOCKED 08:12' · staged-edit count. On the right are selection aggregates (Count/Sum/Avg/Min/Max). Clicking the TX pill gives Commit/Rollback. Closing a tab, switching connection or re-running with an open transaction or staged edits always blocks with an explicit choice. I traded away my toolbar strip, density toggle and separate Cancel button for this, and the 24px rows I accepted give back more height than the bar costs.",
+   "proposed_compromises": [
+    "Chrome budget deal with the Minimalist. No action toolbar. The only permanent chrome is the 32px tab strip (tabs with a 2px env-color top edge, plus a morphing Run/Cancel button with a live timer at its right end) and the 22–24px status bar. Commit/Rollback, the pending-edits bar and the prod 'unlocked' countdown appear only while that state exists. 24px grid rows instead of 28px pay for the status bar several times over.",
+    "Prod safety merge (Minimalist + DBA + me). Red connections start read-only. 'Unlock writes for this tab' comes from the lock glyph or the palette, and relocks after 10 min or on tab close. While unlocked, the tab gets a solid red border and the editor+results area gets a red inset frame. Typed table-name confirmation only for no-WHERE UPDATE/DELETE, TRUNCATE, DROP and ALTER on red. No client-side auto-rollback. Instead, a server-side idle_in_transaction_session_timeout (10min) on red sessions, with the status bar escalating the TX timer color.",
+    "Results area: a chip strip '[1 · 1,284] [2 · UPDATE 3] [Messages 2]'. Chips appear only when there is more than one result or there are messages, the Messages chip count turns amber on NOTICE/WARNING and red on ERROR, and right-click pins a result so the next run adds a chip instead of replacing it. When capped, the header says '10,000 rows (capped) · Fetch all · Re-run uncapped'. Ctrl+Alt+M or a double-click on the splitter maximizes results.",
+    "Staged edits: amber cell tint plus a gutter bar on the cell (not the indigo accent), plus the Minimalist's floating bottom-center bar '3 changes · Review SQL · Discard · Apply (Ctrl+S)'. Review opens in the drawer and Apply runs in one transaction with the rowcount != 1 abort. Re-running or closing with staged edits blocks with Apply / Discard / Cancel.",
+    "Discoverability: the registry drives the Ctrl+K palette, CDK Menu context menus (every item shows its shortcut; nothing is right-click-only) and 400ms tooltips that print the shortcut. 'Copy as ▸' (TSV / CSV / JSON / Markdown / INSERT / UPDATE / IN-list / WHERE) is in the grid context menu and the result-header split button, with Ctrl+Alt+C for the mini-palette. Exports to file stream server-side and say so when the buffer is capped.",
+    "Sidebar: a 40px rail with only Schema, History and Saved (Activity/Locks opens as a full tab), a connection switcher at the top of the sidebar, and Ctrl+B to collapse. History also appears in Ctrl+P results. So the mouse path (rail), the keyboard path (Ctrl+H/Ctrl+P) and the drawer don't compete.",
+    "Cancel semantics: Esc cancels a running query only when the editor has focus and no overlay, menu or cell edit is open; anywhere else it takes Esc Esc. After 5s without the backend dying, the button offers a separate 'Terminate backend' step (DBA).",
+    "Grid looks within the Engineer's budget: fixed 24px rows, 2–3% parity striping, a 2-line header (name + 10px mono type with PK/FK glyphs), NULL as a dim small-caps 'null', a faint '' marker for empty strings, tabular-nums with right-aligned numbers. Rich values go only to the drawer inspector, which in pinned mode follows the selection as you arrow through rows."
+   ],
+   "persona": "The Power User"
+  },
+  {
+   "attacks": [
+    {
+     "target": "The Power User",
+     "their_claim": "Every tab gets a permanent 32px action strip: [Run ▾] [Cancel] [Explain] [Tx: Auto|Manual ▾] [Commit] [Rollback] [Limit 10k ▾] plus connection and database pickers.",
+     "counter": "This is the SSMS toolbar under a new name, and it is the reason those tools look like 2008. Most of the time Commit and Rollback are greyed out. Cancel and Run never matter at the same moment. Explain is a shortcut you learn in a week. Limit 10k is a setting, not something you click. On a 1080p screen, 32px is about 1.3 grid rows paid on every tab, all day, to show mostly-disabled buttons. Mouse users need one visible Run/Cancel control and a visible Commit/Rollback while a transaction is open, and nothing beyond that. The Implementing Engineer's single state-changing button at the end of the tab strip covers the first. A contextual session capsule (see compromises) covers the second and only appears when a transaction actually exists."
+    },
+    {
+     "target": "The Power User",
+     "their_claim": "A permanent 22px VS Code-style status bar carrying connection, search_path, PID, tx state, autocommit, staged count, Ln/Col and selection aggregates.",
+     "counter": "Half of those fields almost never change: PID, search_path, autocommit, Ln/Col (Monaco already shows the cursor). The other half, tx state and staged count, are urgent only when they are non-default, and then they deserve a place next to where your eyes already are, not 22px at the bottom of a 1440px-tall window. The bottom edge is the least-read spot on screen, so a bar of always-present text there is exactly how you stop seeing IN TX. Selection aggregates are a good idea that belongs in the result header, and only while a numeric range of 2 or more cells is selected ('Σ 48,210 · avg 312 · 154 cells'). It is live state, so it shows up when it applies and goes away after."
+    },
+    {
+     "target": "The Power User",
+     "their_claim": "A 40px activity rail (Connections, Schema, History, Saved, Activity/Locks) plus three density presets (20/22/26) on Ctrl+Alt+=/-.",
+     "counter": "Look at what the rail holds once each item has a better home. Connections becomes a one-row switcher. History and Saved become Ctrl+P sources and a drawer view. Activity/Locks becomes a full tab type, as the DBA correctly says. That leaves one icon, Schema, so the rail is a permanent 40px column with nothing behind it. Density presets triple the visual QA for a single user who will choose once. The Engineer's fixed 24px is the right call."
+    },
+    {
+     "target": "The Power User",
+     "their_claim": "Re-running a query over a result with pending edits blocks with an Apply / Discard / Cancel prompt.",
+     "counter": "Staged edits are keyed by primary key, not by grid position, so they can survive a re-run. Keep them in the floating bar ('3 changes on previous result · Review · Discard'), and when Apply runs, the PK WHERE clauses still hold. A modal on every re-run means Ctrl+Enter, wait, click, all day long. Keep the blocking dialog for one case only: closing a tab or switching its connection while a real transaction is open. That one I agree with."
+    },
+    {
+     "target": "The Paranoid DBA",
+     "their_claim": "A never-collapsible 28px session status bar on every editor tab: host:port/db, current_user/role, search_path, tx state, PID, server version, lock, with a hatched background on prod.",
+     "counter": "Using ReadyForQuery as the source of truth is the best idea in this debate, and I take it entirely. The rendering is the problem: 28px of always-identical text that you will habituate to by day three. That is the alarm-fatigue effect you fight everywhere else. Truth that never changes visually does not get read. The diagonal hatch is pure noise and fights the grid. Show the same wire-truthful data in a capsule on the tab strip. It is always visible as a dot, name and db, it expands loudly when state is non-default (IN TX 00:42 / FAILED, ROLLBACK REQUIRED / WRITES UNLOCKED 08:12 / role differs from session_user), and hovering it gives host, PID, version and search_path. Every fact you want is still on screen when it matters, and it costs zero rows."
+    },
+    {
+     "target": "The Paranoid DBA",
+     "their_claim": "INSERT/UPDATE/DELETE with a WHERE gets an inline confirmation on amber connections; scripts with any non-SELECT prompt 'Run 7 statements?'.",
+     "counter": "Amber is the dev database, which is Jan's daily driver for ad-hoc edits. Prompting on every WHERE-qualified UPDATE there is the dialog fatigue you warned about in your own 'why', and it trains Enter-smashing that then carries over to red. Friction belongs on red, and only for the rare irreversible class: DML with no WHERE, TRUNCATE, DROP, ALTER, and EXPLAIN ANALYZE of DML. Typed confirmation for that set is fine with me because it is rare. Everything else on amber and green runs freely."
+    },
+    {
+     "target": "The Paranoid DBA",
+     "their_claim": "On red, an uncommitted transaction auto-rolls back after 60s idle with a visible countdown.",
+     "counter": "A 60s countdown is anxiety UI. You are reading 'UPDATE 3' and checking a SELECT, and the clock pushes you to commit before you have verified anything. Enforce it on the server instead: set idle_in_transaction_session_timeout on prod sessions (for example 5 min). The capsule shows the elapsed tx timer and turns amber after 60s. Postgres does the killing, you get no ticking modal, and the timeout holds even if the UI crashes."
+    },
+    {
+     "target": "The Implementing Engineer",
+     "their_claim": "A permanent split button 'Copy ▾' in the result header plus a pending-edits pill '3 changes · Review' in that header.",
+     "counter": "For staged edits, a pill in a 30px header that is already full of row counts and chips is the same 'too quiet' problem as the strawman badge. The floating bottom-center bar is still just an absolutely positioned div over the grid. It never reflows the grid, so it fits your renderer budget, and it is impossible to miss while it exists. For Copy, I mostly concede below, but it should be one labelled ghost button that opens the shared 'Copy as…' list, not a toolbar cluster."
+    },
+    {
+     "target": "The Implementing Engineer",
+     "their_claim": "Ctrl+J toggles the drawer; Esc (single) cancels a running query when no Monaco widget is open.",
+     "counter": "Ctrl+J is 'toggle bottom panel' in VS Code, and Jan's fingers already know it. Use it for results maximize/toggle, and give the drawer Ctrl+Alt+B (VS Code's secondary sidebar). A single Esc to cancel will fire whenever someone dismisses a tooltip, menu or palette a beat late. Use Esc Esc within 400ms, which the Power User and the DBA both independently proposed."
+    }
+   ],
+   "concessions": [
+    "Run/Cancel location: my floating pill at the editor's bottom-right covers SQL text and Monaco's minimap/scrollbar area. The Engineer's single state-changing button at the right end of the editor tab strip ('Run' becomes 'Cancel 3.2s') is better. It costs no extra chrome, because the tab strip row already exists.",
+    "Mouse users need visible entry points. No action may live only in the palette, and none only in right-click (DBA's rule). The registry renders the palette, the CDK context menus and the few visible buttons from the same entries, and tooltips print the shortcut from the registry.",
+    "Density: I drop 28px rows for the Engineer's fixed 24px, with no presets. I also accept the system UI font (Segoe UI Variable) plus one self-hosted mono with font-display: block. That makes the case for Inter/Geist moot, and the grid metrics argument is correct.",
+    "Errors and messages: there should be a 'Messages' chip next to the result chips, with an amber count for NOTICE/WARNING and red-orange for ERROR, auto-selected on error. It replaces my 'inline line'. The error card must show SQLSTATE, DETAIL, HINT and CONTEXT (DBA), not just the message.",
+    "The DBA's safety mechanics are right and cost no chrome: EXPLAIN ANALYZE of DML inside BEGIN…ROLLBACK, labelled in the drawer header. Apply aborts and rolls back the whole batch if any PK statement affects a row count other than 1. Per-connection persistent history with outcome. An append-only local audit log for red statements.",
+    "Activity/Locks is a full tab type with auto-refresh, not a drawer view (DBA). You watch it for minutes.",
+    "Opening a table from the tree opens a data tab with WHERE/ORDER BY inputs (Power User). It is the fastest browse loop and it is contextual chrome, since it exists only on that tab type.",
+    "The grid must not lie: NULL as a dim italic 'null', the empty string as a faint '∅' marker, and leading/trailing whitespace made visible. A ≤2% zebra stripe at 24px rows is acceptable, because it helps row tracking more than hairlines do.",
+    "Browser-safe shortcut map (Engineer): never Ctrl+W/T/N/Tab; Alt+N / Alt+W / Alt+1..9 for tabs.",
+    "Closing a tab or switching its connection while a real transaction is open blocks with Commit / Rollback / Cancel. That is the one blocking dialog I accept.",
+    "The Engineer's grid hill is compatible with mine. Every overlay I proposed (pending bar, Copy-as mini-palette, overlay drawer) is a positioned layer that never reflows the grid."
+   ],
+   "revised_hill": "There is no permanent icon toolbar and no full-width status bar. Session truth is still always visible: it lives in one 'session capsule' on the tab strip, next to the single Run/Cancel button. The capsule always shows the env dot, connection and db. It expands into loud, labelled text only when state is non-default: IN TX 00:42 with Commit/Rollback buttons, FAILED, ROLLBACK REQUIRED, WRITES UNLOCKED 08:12, or ROLE app_admin. Its data comes from ReadyForQuery and the live session, not from config. Every action is registered once and reachable from the palette, a context menu and, where it earns a spot, a visible button. Chrome that does not reflect live state does not get a pixel.",
+   "proposed_compromises": [
+    "Session capsule instead of a status bar. It sits right-aligned in the 36px tab strip and is always visible: [● dev-cmdb / cmdb]. When state is non-default it grows labelled pills in the semantic color: 'IN TX 00:42 · Commit · Rollback', 'FAILED — ROLLBACK REQUIRED' in red-orange, 'READ ONLY 🔒' on prod, 'WRITES UNLOCKED 08:12', and 'as app_admin' when current_user differs from session_user. Hover shows host:port, PID, server version and search_path, and a click copies them. It is driven by ReadyForQuery txn status plus SHOW after each statement. That gives the DBA wire truth, words not icons, and the Power User the visible Commit/Rollback, for zero rows of permanent chrome.",
+    "Prod write model, merging three proposals. Prod is read-only by default (SET default_transaction_read_only). Unlocking is per tab and requires typing the connection name once (Power User + DBA), then lasts 10 minutes (mine). While unlocked, DML runs in an implicit BEGIN and the capsule shows Commit/Rollback. The server enforces idle_in_transaction_session_timeout of about 5 minutes, and the capsule turns amber after 60s. On red, typed table-name confirmation applies only to no-WHERE DML, TRUNCATE, DROP, ALTER and EXPLAIN ANALYZE of DML. Amber and green get no confirmations.",
+    "Prod ambient cue: a 2px red inset frame around editor+results on red connections, plus the 2px top edge and dot on the tab. No hatch and no window-wide band. That red hue is reserved, and errors use red-orange plus an icon (DBA's rule).",
+    "Results header (30px, it already exists): result chips '[1 · 1,284] [2 · UPDATE 3] [Messages 2]', where the chips appear only when there is more than one item. On the left, '1,284 rows · 24 ms', with the query/fetch split in a tooltip and '(capped at 10k)' in amber when capped. On the right, selection aggregates appear only while a numeric range is selected, followed by one labelled ghost 'Copy as…' button that opens the same registry-driven list as Ctrl+Shift+C and the context menu: TSV, CSV, JSON, Markdown, INSERT, UPDATE by PK, IN (…), WHERE, Save to file…. 'Save to file' streams from the backend, and when capped it offers 'Re-run uncapped → stream to file' (Power User).",
+    "Staged edits: amber cell left edge (one semantic color, not an indigo accent; I yield to the 'amber means pending' consensus). A floating bottom-center bar exists only while edits are pending and reads '3 changes · Review SQL · Discard · Apply Ctrl+S'. Review opens the drawer with generated SQL. Apply runs everything in one transaction and aborts if any row count is not 1. Re-running a query keeps PK-keyed edits staged rather than blocking.",
+    "Shortcut map: Ctrl+K palette (Monaco's Ctrl+K chords unbound), Ctrl+P go to object/history/saved, Ctrl+Enter run statement (gutter bar shows the range first), Ctrl+Shift+Enter run selection/all, Esc Esc cancel (with a 'Terminate backend' second step after 5s, per DBA), Ctrl+E Explain, Ctrl+Shift+E Explain Analyze, Ctrl+J results toggle/maximize, Ctrl+B sidebar, Ctrl+Alt+B drawer, Ctrl+S review/apply edits, Alt+N/Alt+W/Alt+1..9 tabs.",
+    "Sidebar: one 32px connection switcher row at the top, with the schema tree of the active tab's connection below it (flattened 24px virtual list). No activity rail. History and Saved are reachable through Ctrl+P and as drawer views. Activity/Locks is a tab type opened from the palette or the switcher menu.",
+    "Drawer: overlay by default, with a pin toggle for push mode that relayouts once on transitionend (Engineer). The cell inspector follows the grid selection live while the drawer is open (Power User), so arrowing through jsonb rows works in both modes.",
+    "Looks: zinc neutrals plus one indigo accent for focus and selection only. Semantic colors are amber for pending, red-orange for errors, green for local, and the reserved red for prod. 1px hairlines, radius 4px on controls and 8px on overlays, shadows on overlays only. 120–150ms transform/opacity motion on overlays only, a static elapsed counter after 300ms instead of shimmer, no backdrop blur. Dark mode is designed as its own theme, with elevation steps on the same ~25 semantic tokens, and the env colors are checked against WCAG AA in both themes."
+   ],
+   "persona": "The Minimalist Designer"
+  },
+  {
+   "attacks": [
+    {
+     "target": "The Minimalist Designer",
+     "their_claim": "No status bar, ever. Connection, environment and running state already live on the tab and the Run pill.",
+     "counter": "The tab shows the connection you configured. It can't show the session as it actually is. The state that takes databases down is 'idle in transaction', and at that moment nothing is running, so the Run pill is quiet and the tab looks exactly like it did when it was safe. A tab can't tell you that you ran SET ROLE postgres twenty minutes ago, that search_path points at the wrong schema, or that the last error left you in an aborted transaction and the next 15 statements will all fail with 25P02. The cost argument is also overstated. A 24px strip is less than one 26-28px grid row. Folding it into the editor/results splitter, which has to exist anyway, costs zero rows (see compromises)."
+    },
+    {
+     "target": "The Minimalist Designer",
+     "their_claim": "NOTICEs and DML row counts collapse into a single line above the grid, and multiple result sets become compact chips that only appear when there is more than one.",
+     "counter": "A collapsed line is where warnings go to die. 'WARNING: there is no transaction in progress' after a COMMIT tells you your BEGIN never happened and you've been autocommitting all along. A RAISE NOTICE in a migration DO block is usually the only progress output you get. Chips are fine with me. A collapsed line that looks the same whether it holds 'UPDATE 3' or a WARNING is not. The Messages chip needs a count and a severity color (amber for WARNING, red-orange for ERROR), and it should auto-select on ERROR and pulse once on WARNING."
+    },
+    {
+     "target": "The Minimalist Designer",
+     "their_claim": "Unlocking prod writes for a tab means 10 minutes of free writes with a solid red border. There is no 'are you sure' on each Apply.",
+     "counter": "I'll take the time-boxed unlock in place of per-statement confirms for normal WHERE-qualified DML. Unlocking is a deliberate mode, and that beats dialog fatigue. But a 10-minute free-fire window treats 'UPDATE orders SET status=... WHERE id=42' the same as 'DELETE FROM orders' with the WHERE accidentally left unselected. The second statement still needs typed friction while unlocked. Statements that can destroy a whole table stay gated even inside the unlocked mode. Each one gets a single modal where you type the table name, and that's all."
+    },
+    {
+     "target": "The Implementing Engineer",
+     "their_claim": "Cancel calls pg_cancel_backend on the backend through the existing session.",
+     "counter": "You can't do that. While a query runs, its session is blocked waiting for the result and can't accept a second statement. Cancellation goes out of band. Either you use the protocol CancelRequest (a separate socket carrying the backend PID and the secret key, which is what Npgsql does when you trigger the CancellationToken passed to ExecuteReaderAsync), or you open a second connection and call pg_cancel_backend(pid). Terminate always needs that second connection, plus the pg_signal_backend role or the same user, and on a prod role that lacks those rights the UI has to say why the terminate failed. This is why the backend PID has to be in the session state shown to the user: cancel and terminate both target it."
+    },
+    {
+     "target": "The Implementing Engineer",
+     "their_claim": "A simple statement splitter (semicolons, blank lines, string/comment/$$-aware) is enough; no real parser.",
+     "counter": "That's fine for finding statement boundaries, because the gutter bar shows you what was picked before it runs. It is not fine for classifying risk. 'WITH d AS (DELETE FROM t RETURNING *) SELECT ...' starts with WITH, and 'SELECT purge_old_rows()' starts with SELECT. A keyword sniffer marks both as safe. So the classifier must be conservative: anything it can't prove is a plain SELECT gets treated as a write. The real safety net costs nothing to build: on a locked red connection, run 'SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY' on the session itself, so Postgres rejects writes with SQLSTATE 25006. The UI lock is a convenience; the server-side read-only is the actual guarantee."
+    },
+    {
+     "target": "The Implementing Engineer",
+     "their_claim": "Esc cancels the running query (when Monaco widgets are closed); the overlay drawer also closes on Esc.",
+     "counter": "Two jobs on one key. If the drawer is open while a 40s query runs, does Esc close the drawer or cancel the query? Either answer surprises you half the time, and cancelling during an incident is exactly when you mash keys. Cancel should be Esc Esc (a double press within 400ms) or Ctrl+Break, and the button label should say so. A single Esc keeps the 'dismiss the topmost overlay' meaning."
+    },
+    {
+     "target": "The Power User",
+     "their_claim": "Export offers 'Re-run uncapped → stream to file' when the result is capped.",
+     "counter": "Re-running isn't free. If the capped result came from 'UPDATE ... RETURNING', 'INSERT ... RETURNING', 'SELECT nextval(...)' or a side-effecting function, re-running it executes the write a second time. Offer re-run only for statements the conservative classifier calls read-only, wrap the re-run in BEGIN READ ONLY on every connection color, and label the button with the statement it will re-execute. On amber or red, also show the estimated row count from EXPLAIN (plan only) before streaming 40M rows from prod."
+    },
+    {
+     "target": "The Power User",
+     "their_claim": "Status bar: connection chip, search_path, PID, tx state, autocommit, staged count, Ln/Col, and on the right selection aggregates (Count/Sum/Avg/Min/Max/Distinct).",
+     "counter": "I agree with the bar. I object to the crowding. Selection aggregates and Ln/Col change on every click, and the tx-state pill has to sit at a fixed position in that bar so your eye learns where to find it. Put the identity and tx block in fixed positions on the left that can't be pushed, and the aggregates in a separate right-aligned region that truncates first. Also, 'FAILED in pulsing red' collides with the prod red. Use the error red-orange plus the words 'FAILED — ROLLBACK REQUIRED', and no pulse that runs forever. A permanent animation turns into wallpaper within an hour."
+    },
+    {
+     "target": "The Power User",
+     "their_claim": "Activity/Locks lives as a rail entry in the 260px sidebar.",
+     "counter": "pg_stat_activity with blocking chains, query text, wait_event, xact age and pg_locks modes does not fit in 260px. During an incident you watch it for minutes, sort by xact_start, and cancel or terminate from it. The rail can keep the icon as an entry point, but clicking it should open a full-width Activity tab with 2s refresh (pausable) and a 'blocked by' tree, not a sidebar list."
+    },
+    {
+     "target": "The Power User",
+     "their_claim": "Opening a table from the schema tree opens a data tab (WHERE/ORDER BY inputs).",
+     "counter": "That's great on dev. On prod, a 'browse table' that silently runs 'SELECT * FROM events' plus count(*) on 300M rows starts a sequential scan and can bloat I/O for everyone else. The data tab must use LIMIT pushed into the SQL, never a count(*) by default (show pg_class.reltuples as '~300M est.'), and default ORDER BY to the PK only when it's indexed. It should also show the generated SQL in a one-line footer, so it's clear what actually ran."
+    }
+   ],
+   "concessions": [
+    "Command registry first (Minimalist and Engineer): one registry feeding the palette, menus, buttons, tooltips and later MCP. This is better than my 'palette as index' framing, because it can also enforce 'when' clauses such as conn.readOnly, which makes it a safety mechanism and not only a discovery mechanism.",
+    "Chips instead of a nested result tab strip (Engineer and Minimalist) are acceptable, as long as Messages has a count plus severity color and auto-selects on ERROR, and DML command tags ('UPDATE 3') get their own chips.",
+    "Overlay drawer by default, with pin to push, and relayout on transitionend only (Engineer). This is a better default than my 'pinned' bias, and it keeps the grid stable.",
+    "Time-boxed per-tab unlock (Minimalist) instead of an inline confirmation on every DML. I drop my 'inline confirm for WHERE-qualified DML on amber' entirely: amber is Jan's daily dev DB, and that friction would train the reflexive Enter I warned about. Typed friction stays only for no-WHERE DML, TRUNCATE, and DROP/ALTER on red.",
+    "Prod and no-PK results never enter edit mode in the first place (Engineer). Blocking up front is better than refusing after 40 staged edits.",
+    "A statement splitter instead of a parser is fine for finding boundaries, because the gutter bar shows the exact range before execution. My objection is limited to using it for risk classification.",
+    "One fixed density with no compact/comfortable toggle, the system UI font, and only a self-hosted monospace (Engineer). These don't affect safety, and a late font swap that changes measured grid widths really would make the grid lie.",
+    "The status bar shrinks from 28px to 22-24px (Power User/Minimalist pressure is fair). I'll also drop the diagonal hatch on red. The 2px inset frame is an 'edge', consistent with the Minimalist's 'edges and dots, no fills' rule, and that is enough.",
+    "The Engineer's imperative grid budget is compatible with truth-telling: NULL, empty string and whitespace markers are a class toggle plus textContent and need no per-cell components. I support that hill."
+   ],
+   "revised_hill": "Session truth is always on screen, and the server enforces safety rather than the UI pretending to. A non-collapsible strip of 22-24px per editor tab shows the live session, not the configured one: env color, db, current_user (plus the role when it differs from session_user or is a superuser), and a tx pill with words and a timer (AUTOCOMMIT / IN TX 01:12 / FAILED — ROLLBACK REQUIRED), plus the PID and READ ONLY. It refreshes after every statement from a probe: SELECT current_user, session_user, current_setting('search_path'), current_setting('transaction_read_only'), pg_backend_pid(), now() <> statement_timestamp(). If the probe itself fails with 25P02, that proves the transaction is aborted. Where the strip sits is negotiable; that it's always visible and comes from the wire is not. Behind it, locked red sessions run with a session-level READ ONLY default, so even a misclassified 'SELECT purge()' is rejected by Postgres itself.",
+   "proposed_compromises": [
+    "Splitter-as-status-strip (for the Minimalist's row budget): the 22-24px session strip IS the editor/results splitter handle. You drag it to resize and double-click it to maximize, so it costs zero extra rows compared with a plain 4px gutter. When results are collapsed (Ctrl+J) it docks to the bottom. In the calm state it shows only the env chip, db, role and 'AUTOCOMMIT' in muted text. When a tx is open, the role differs, or it's read-only, the relevant pill becomes loud. The chrome stays quiet when the state is safe and gets loud when it isn't, which is the Minimalist's own 'chrome shows live state' principle applied to the most important state.",
+    "Power User's Tx Auto|Manual control plus my prod auto-BEGIN: red defaults to Manual. Commit and Rollback buttons appear in the editor's tab-strip action area only while a tx is open, which satisfies the Minimalist (absent when idle) and the Power User (visible to the mouse when it matters). An idle open tx on red gets an amber countdown and auto-rolls back at 60s, configurable. Closing the tab, switching connection or re-running with an open tx or staged edits gets a Commit / Rollback / Cancel prompt.",
+    "Friction ladder, final: green = nothing. Amber = nothing, except the staged-edit SQL review that everyone already agreed on. Red locked = server-enforced READ ONLY. Red unlocked (Minimalist's 10-minute per-tab mode, solid 2px red inset frame) = WHERE-qualified DML runs freely inside the auto-BEGIN. No-WHERE DML, TRUNCATE, DROP/ALTER and EXPLAIN ANALYZE of DML need the table name typed. EXPLAIN ANALYZE of non-SELECT always runs in BEGIN…ROLLBACK, and the drawer header says so.",
+    "Run/Cancel: one morphing button (Engineer/Minimalist), pinned in the editor tab strip. While running it reads 'Cancel · 3.2s · Esc Esc'. Cancel goes out of band (CancelRequest or a second connection). After 5s still alive, the button offers 'Terminate backend' as a separate, labelled step.",
+    "Staged-edit Apply (everyone): drawer review in read-only Monaco, a single transaction, and each statement must report exactly 1 row affected or the whole batch rolls back with the offending statement highlighted. The pending indicator can be the Minimalist's floating bar or the Engineer's header pill, whichever is cheaper. I care about the 1-row invariant, not where the indicator sits.",
+    "Messages: a chip with count plus severity color. It auto-selects on ERROR and shows SQLSTATE, message, DETAIL, HINT, CONTEXT and a jump-to-position link that sets a Monaco marker. NOTICEs are captured from Npgsql's Notice event, never shown as toasts.",
+    "Activity/Locks: an icon in the Power User's rail or a palette command, opening a full-width tab type (2s refresh, pausable, blocked-by tree, cancel/terminate per row behind a confirm that names the PID and the query). It never opens in the sidebar or the drawer.",
+    "History: no permanent pane (Minimalist/Engineer); searchable via palette/Ctrl+H, opening in the drawer. Every entry records connection, role, tx outcome (committed / rolled back / autocommit) and duration. Statements run on red are additionally appended to a local JSONL audit file, about 20 lines of backend code.",
+    "Color reservation (everyone already mostly agrees): the saturated prod red appears only as the env signal, and errors and FAILED-tx use a distinct red-orange plus an icon plus words. Token tests check AA contrast for env colors in both themes."
+   ],
+   "persona": "The Paranoid DBA"
+  },
+  {
+   "attacks": [
+    {
+     "target": "The Power User",
+     "their_claim": "A 32px action strip on every tab, always visible: [Run ▾] [Cancel] [Explain] [Tx: Auto|Manual ▾] [Commit] [Rollback] [Limit 10k ▾], plus connection and database pickers.",
+     "counter": "Most of that strip is disabled most of the time. Commit and Rollback are greyed out whenever no transaction is open, which in autocommit mode is always. Cancel duplicates Run, because the two are never usable at the same moment. Limit and Tx mode get set once per connection, not on every query. The strip is 32px of permanent chrome holding about 9 controls, each needing enabled/disabled states, tooltips and focus order, and maintaining all of that costs more than it gives back. The cheaper version keeps what matters to a mouse user. Put one Run/Cancel morph button in the tab strip. Show a tx pill in the status bar only while a transaction is open: 'IN TX 00:42 ▾' opens Commit/Rollback, and it disappears afterwards. Limit and Tx mode become per-connection settings plus palette commands. You get the same visibility with one control that is always meaningful."
+    },
+    {
+     "target": "The Power User",
+     "their_claim": "Commit = Ctrl+Alt+Enter, Rollback = Ctrl+Alt+Z, Export = Ctrl+Alt+S, pin drawer = Ctrl+Alt+I, density = Ctrl+Alt+=/-.",
+     "counter": "On Windows, AltGr is delivered as Ctrl+Alt, and Jan types on a Czech layout where AltGr produces the characters SQL needs (@ { } [ ] \\ | # & < > *). Any Ctrl+Alt+letter binding lets typing a character fire a command, or stops the character from reaching Monaco at all; for example, typing `{` while a binding sits on that key. Rollback on the same chord family as a character you type is a real hazard. Rule: no Ctrl+Alt bindings at all, and no browser-reserved keys (Ctrl+W/T/N/Tab). Commit and Rollback go through the tx pill or the palette. If they need shortcuts, use Ctrl+Shift+Enter variants inside the tx context or F-keys."
+    },
+    {
+     "target": "The Power User",
+     "their_claim": "Table data tabs with separate WHERE and ORDER BY inputs that have 'Monaco-lite autocomplete', plus Compact/Comfortable density toggles (20/22/26px).",
+     "counter": "'Monaco-lite' doesn't exist. Those inputs are either extra Monaco instances (heavy, and it breaks the single-instance/model-swap design) or a second, homemade autocomplete engine that never matches the real one. Cheaper and equivalent: a data tab is an ordinary SQL tab whose model holds `SELECT * FROM t WHERE … ORDER BY …`, with the editor collapsed to about 3 lines. Filtering means editing that query with the same Monaco and its full completion, and 'Show SQL' is free because the SQL is already there. A density toggle triples the grid geometry to QA (row height feeds scroll maths, overscan and the pool size) for a value Jan sets once. Pick one row height, 24px."
+    },
+    {
+     "target": "The Minimalist Designer",
+     "their_claim": "No status bar ever. The single tab strip merges into a 36px title row next to the window controls, Arc/Zed style.",
+     "counter": "Phase one runs in a browser tab: the page has no title row and cannot reach the window controls. In the Photino/WebView2 phase, a merged title row means a frameless window with custom drag regions, hit-testing, snap layouts and min/max/close buttons drawn by us. That's a week of platform work for a cosmetic gain. 'No status bar ever' also leaves no stable home for the one piece of state that prevents damage: am I inside an open transaction on prod. The Run pill and tab colour show connection and running state, but not tx state, role or read-only. A 22px fixed-height bar costs less than one grid row and, unlike your floating bar, never changes the grid's geometry."
+    },
+    {
+     "target": "The Minimalist Designer",
+     "their_claim": "The staged-edits bar floats bottom-centre over the grid and exists only while edits are pending.",
+     "counter": "It sits over the last visible rows and the horizontal scrollbar exactly while you are editing near the bottom of the viewport. It also adds a second, competing surface for the same state the header pill and the amber cell marks already show. Keep it simple: the amber marks on cells, a '3 changes · Review' pill in the fixed-height result header, and the count in the status bar. Nothing floats over the data surface."
+    },
+    {
+     "target": "The Minimalist Designer",
+     "their_claim": "28px grid rows with a 24px compact setting; dark mode uses elevation steps instead of borders.",
+     "counter": "28px loses about 15% of visible rows against 24px on a 1080p screen, which works against the rows-on-screen argument you make yourself. Adding a compact setting means two geometries to test. Make 24px the only option. Borderless elevation in dark mode means each theme defines structure differently, so every component needs two separately reviewed looks. Keep 1px hairline tokens in both themes and let the token values differ; one structure, two palettes."
+    },
+    {
+     "target": "The Paranoid DBA",
+     "their_claim": "The backend parses every statement and classifies its risk (UPDATE/DELETE without WHERE, TRUNCATE, DROP, ALTER) to scale friction, and Run shows a progress shimmer on the running tab.",
+     "counter": "Reliable classification needs a real Postgres parser (libpg_query bindings, native binaries per platform). CTEs (`WITH x AS (DELETE … RETURNING …) SELECT`), DO blocks and functions with side effects (`SELECT purge_all()`) defeat anything cheaper, so the guard gives false confidence on exactly the cases that matter. The mechanism that actually saves you needs no parser. On red connections, every non-read-only run executes inside an implicit BEGIN. The result shows 'N rows affected · Commit / Rollback', and the idle auto-rollback timer applies. The typed-name confirmation applies only to the cheap, unambiguous lexical cases: the first keyword is TRUNCATE or DROP, or the splitter sees UPDATE/DELETE with no WHERE token. The shimmer repaints every frame next to the grid; a static elapsed timer gives the same information."
+    },
+    {
+     "target": "The Paranoid DBA",
+     "their_claim": "The status bar re-reads current_user, search_path and similar values with SHOW after every statement and shows host:port/dbname, role, search_path, tx state, PID, server version and read-only, never collapsible.",
+     "counter": "A SHOW round trip after every statement doubles latency on every fast query, and fast queries are most queries. Most of those values can only change after SET, RESET or SET ROLE, or a function that calls set_config. Read tx state from the protocol, or track it in our session wrapper where Npgsql doesn't expose it, and re-read role and search_path only after statements whose first keyword is SET/RESET or after a failure. Also, nine fields in a 28px bar overflow at any normal width. Keep the high-signal items visible as text pills (conn, user if it differs from the configured one, tx state with timer, READ ONLY). PID, server version and host:port go in the conn chip's tooltip and in the palette ('session info')."
+    }
+   ],
+   "concessions": [
+    "Power User and DBA are right that transaction state had no home in my opening, and that's a real gap. A fixed 22px status bar is cheap and safe for the grid because its height never changes. Moving timings, row count and tx state there also fixes the result-header overflow problem I raised myself. I drop 'no permanent chrome'.",
+    "DBA: every PK-based edit must check affected rows == 1 per statement, and roll back the whole batch otherwise. It costs about 5 lines in the C# apply path and catches concurrent deletes and fake PKs.",
+    "DBA: EXPLAIN ANALYZE of anything that isn't a plain SELECT always runs inside BEGIN … ROLLBACK, with that stated in the drawer header. It's trivial and it prevents a classic accident.",
+    "DBA: Activity/Locks should be a full tab type with a pausable 2s refresh, not a drawer view. It reuses the grid and the tab model, so it costs nothing extra.",
+    "DBA: Messages must show the full error (SQLSTATE, DETAIL, HINT, CONTEXT) and jump to the position. Npgsql's PostgresException already carries all of it.",
+    "Power User and DBA: Esc Esc is a better cancel than a single Esc, which needs Monaco context-key checks. Double-press can't collide with closing suggest or find, so it's cheaper and safer.",
+    "Power User and DBA: highlight the statement range with a gutter decoration before running it. One deltaDecorations call, reusing the splitter I already proposed.",
+    "Power User: the pinned drawer's cell inspector should follow the grid's active cell live. It's one signal and costs nothing.",
+    "Power User: running a new query over pending edits must block with Apply / Discard / Cancel. That is the cheap way to keep staged work from being lost.",
+    "Power User: show the column type (int4, jsonb…) as a second line in the header. The header has a fixed height, so the grid geometry is unaffected, and it is high value.",
+    "Power User: the export menu must say the result was capped at 10k and offer 'Re-run uncapped → stream to file'. Server streaming is already the plan, so this is honest at low cost.",
+    "Power User and Minimalist: 'Copy as IN (…) list' and 'Copy as WHERE clause' are extra entries in the same backend generator as INSERT. Nearly free.",
+    "Minimalist: Ctrl+Shift+C as a filtered 'Copy as…' palette reuses the palette component, so it's a good free entry point.",
+    "DBA: distinct markers for NULL, empty string and whitespace-only values. They are one class or prefix applied to visible cells at render time and fit inside the grid budget."
+   ],
+   "revised_hill": "The results grid remains a hand-written imperative renderer outside Angular change detection: fixed 24px rows, a recycled DOM pool, scroll writes only textContent and transform, 60fps on 10k × 40. I'm extending the hill to the grid's surroundings: every piece of chrome around the grid has a fixed height and never appears or disappears in a way that moves the grid. That means a fixed 30px result header, a fixed two-line column header, a fixed 22px status bar, and a drawer that overlays the grid, or pushes it with a single relayout on transitionend. Ideas that would reflow the grid during interaction (floating bars, density toggles, variable-height rows, an animated push drawer, per-cell components) are out. Rich content goes to the drawer.",
+   "proposed_compromises": [
+    "Status bar: 22px, app-level, not collapsible. Left to right: conn chip (env colour, name; tooltip carries host:port/db, PID, server version) · user/role only when it differs from the configured one · tx pill with words ('AUTOCOMMIT' / 'IN TX 00:42 ▾' / 'FAILED, ROLLBACK REQUIRED') · 'READ ONLY' pill · staged-edit count · active result's '1,284 rows · 18 ms'. Right side: selection aggregates (Count/Sum/Min/Max) for the selected range, computed by the backend over the buffered result. Covers the DBA's and Power User's hill without a per-statement SHOW and without a 9-control action strip.",
+    "Run/Cancel: one morphing button at the right end of the tab strip ('Run' → 'Cancel 3.2s'). If the backend is still alive after 5s, a second step offers 'Terminate backend'. Commit/Rollback live in the tx pill's menu and only exist while a transaction is open. Tx mode (Auto/Manual) and row limit are per-connection settings plus palette commands. Prod defaults to Manual + READ ONLY.",
+    "Prod safety without a SQL parser: a lexical first-keyword check after the splitter, plus an implicit BEGIN for every non-SELECT run on red, with 'N rows affected · Commit / Rollback' and auto-rollback after idle. The typed table-name confirmation appears only for TRUNCATE/DROP, or UPDATE/DELETE with no WHERE, on red. The Minimalist's per-tab 'Unlock writes' with a 10-minute relock is the way to lift READ ONLY.",
+    "Command registry first, shared by the palette (Ctrl+K), CDK Menu context menus, keybindings and tooltips. Every context-menu item also exists in the palette with its shortcut. This is what all four of us actually agree on.",
+    "Shortcut rules: no Ctrl+Alt (AltGr on the Czech layout) and no browser-reserved keys. Ctrl+B sidebar, Ctrl+J drawer, Ctrl+Shift+M maximize results, Ctrl+P go-to-object, Ctrl+H history (opens in the drawer), Esc Esc cancel, Ctrl+S review staged edits, F4 open the referenced FK row (frees Ctrl+B).",
+    "Results header: one fixed 30px row that is semantically a tablist. Result chips appear only when there is more than one result ('1 · 1,284', '2 · UPDATE 3'). A Messages chip is always present, with an unread badge that turns amber on NOTICE/WARNING and red on ERROR, and an error auto-selects it. A chip can be pinned so the next run adds a new chip instead of replacing it. No second tab-strip component.",
+    "Data tabs are SQL tabs: opening a table creates a tab whose Monaco model is `SELECT * FROM t WHERE … ORDER BY … ` with the editor collapsed to about 3 lines. You filter by editing the real query, using the one Monaco and its real completion.",
+    "Sidebar: no 40px activity rail in v1. The top row is the connection switcher, followed by the schema tree for the active tab's connection (a flattened virtual list). History is persistent per connection in the backend (SQLite), with an append-only audit log for red connections, and is surfaced through Ctrl+H/the palette into the drawer. Activity/Locks is a tab type. A rail can come later if a third panel ever earns permanent space.",
+    "Looks, settled: 24px grid rows (the median of 22, 24, 26 and 28), one density, a 13px system UI font, one self-hosted monospace font, a zinc palette plus one accent, env colours as edges, a red inset frame on prod, a distinct red-orange for errors so prod red keeps its meaning, 1px hairlines in both themes, and overlay-only motion at 120–150ms, with no shimmer and no glass."
+   ],
+   "persona": "The Implementing Engineer"
+  }
+ ]
+}

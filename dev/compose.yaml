@@ -1,0 +1,16 @@
+# Throwaway local Postgres for developing yadbc. Dev-only credentials.
+services:
+  postgres:
+    build: .
+    image: yadbc-dev-pg:18
+    container_name: yadbc-dev-pg
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements"]
+    environment:
+      POSTGRES_USER: yadbc
+      POSTGRES_PASSWORD: yadbc
+      POSTGRES_DB: yadbc
+    ports:
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - ./seed.sql:/docker-entrypoint-initdb.d/seed.sql:ro
+      - ./shop.sql:/docker-entrypoint-initdb.d/shop.sql:ro

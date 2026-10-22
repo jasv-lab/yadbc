@@ -1,0 +1,14 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Angular build output lands in the host's wwwroot
+src/Yadbc.Host/wwwroot/
+
+# Node
+node_modules/
+
+# Your own deployment values (hostnames, registry, …) — kept out of the public repo
+deploy/local/

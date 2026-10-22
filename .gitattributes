@@ -1,0 +1,5 @@
+# Text is stored with LF; checkouts get the platform's line endings.
+* text=auto
+*.ico binary
+*.png binary
+*.woff2 binary
