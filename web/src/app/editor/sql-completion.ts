@@ -176,9 +176,16 @@ export function registerSqlCompletion(
         }
 
         case 'general': {
+          // The same table named twice without an alias (`from t` … `insert into t`, or two statements
+          // without a `;` between them) is one scope, not two: listing it twice doubles every column.
+          const seen = new Set<string>()
           const resolved = ctx.refs
             .map((ref) => ({ ref, object: findObject(data, ref) }))
             .filter((r): r is { ref: RelationRef; object: CatalogObject } => !!r.object)
+            .filter((r) => {
+              const key = `${r.object.oid}|${r.ref.alias ?? ''}`
+              return !seen.has(key) && !!seen.add(key)
+            })
           const columnSets = await Promise.all(resolved.map((r) => columnsOf(r.object)))
 
           // A column name present in several relations gets qualified on insert (u.id vs i.id).

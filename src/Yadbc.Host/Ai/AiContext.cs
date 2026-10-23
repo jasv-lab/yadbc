@@ -6,9 +6,9 @@ namespace Yadbc.Host.Ai;
 
 /// <summary>
 /// What the model is told about the database: the server version and the schema — in detail for the
-/// tables the statement or question is about (columns, types, keys, foreign keys, and their neighbours
-/// either way), then column names for the rest as far as the budget goes. Never any rows: results stay
-/// out of prompts. Kept within a budget so a 16k-token model still has room to answer.
+/// tables the statement or question is about (columns, types, keys, foreign keys, existing indexes, and
+/// their neighbours either way), then column names for the rest as far as the budget goes. Never any
+/// rows: results stay out of prompts. Kept within a budget so a 16k-token model still has room to answer.
 /// </summary>
 public static partial class AiContext
 {
@@ -16,7 +16,7 @@ public static partial class AiContext
 
     internal sealed record Col(string Name, string Type, bool NotNull, bool Pk, string? Ref);
 
-    internal sealed record Table(string Schema, string Name, string Kind, double Rows, List<Col> Cols)
+    internal sealed record Table(uint Oid, string Schema, string Name, string Kind, double Rows, List<Col> Cols)
     {
         public string Id => Schema == "public" ? Name : $"{Schema}.{Name}";
     }
@@ -25,7 +25,7 @@ public static partial class AiContext
     {
         var tables = new Dictionary<(string, string), Table>();
         await using (var cmd = new NpgsqlCommand("""
-            select n.nspname, c.relname, c.relkind::text, greatest(c.reltuples, 0)::float8,
+            select n.nspname, c.relname, c.relkind::text, greatest(c.reltuples, 0)::float8, c.oid,
                    a.attname, format_type(a.atttypid, a.atttypmod), a.attnotnull,
                    exists (select 1 from pg_index i where i.indrelid = c.oid and i.indisprimary and a.attnum = any(i.indkey)),
                    (select rn.nspname || '.' || rc.relname || '(' || ra.attname || ')'
@@ -48,8 +48,8 @@ public static partial class AiContext
             {
                 var key = (r.GetString(0), r.GetString(1));
                 if (!tables.TryGetValue(key, out var t))
-                    tables[key] = t = new Table(key.Item1, key.Item2, r.GetString(2), r.GetDouble(3), []);
-                t.Cols.Add(new Col(r.GetString(4), r.GetString(5), r.GetBoolean(6), r.GetBoolean(7), r.IsDBNull(8) ? null : r.GetString(8)));
+                    tables[key] = t = new Table(r.GetFieldValue<uint>(4), key.Item1, key.Item2, r.GetString(2), r.GetDouble(3), []);
+                t.Cols.Add(new Col(r.GetString(5), r.GetString(6), r.GetBoolean(7), r.GetBoolean(8), r.IsDBNull(9) ? null : r.GetString(9)));
             }
 
         // Three tiers inside the budget, most useful first:
@@ -67,11 +67,16 @@ public static partial class AiContext
         var detailed = new HashSet<Table>();
         if (mentioned.Count > 0)
         {
-            sb.AppendLine("Tables in question (columns: name type [PK] [NOT NULL] [→ referenced]):");
-            foreach (var t in mentioned.Concat(neighbours))
+            var inQuestion = mentioned.Concat(neighbours).ToList();
+            var indexes = await IndexesAsync(conn, inQuestion.Select(t => t.Oid).ToArray(), ct);
+            sb.AppendLine("Tables in question (columns: name type [PK] [NOT NULL] [→ referenced]; then every index the table has):");
+            foreach (var t in inQuestion)
             {
                 if (sb.Length > Budget * 2 / 3) break;
                 Detail(sb, t);
+                // Views and foreign tables can't have indexes: "none" would only invite suggestions.
+                if (t.Kind is "r" or "p" or "m")
+                    sb.AppendLine(indexes.TryGetValue(t.Oid, out var list) ? $"  indexes: {string.Join("; ", list)}" : "  indexes: none");
                 detailed.Add(t);
             }
             sb.AppendLine();
@@ -102,6 +107,38 @@ public static partial class AiContext
             AppendNames(sb, rest.Skip(shown).ToList());
         }
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// The indexes of these tables, as "name (columns)" with UNIQUE / PK, a non-btree method and a
+    /// partial index's WHERE — what the model needs to not suggest an index that's already there.
+    /// </summary>
+    static async Task<Dictionary<uint, List<string>>> IndexesAsync(NpgsqlConnection conn, uint[] oids, CancellationToken ct)
+    {
+        var byTable = new Dictionary<uint, List<string>>();
+        if (oids.Length == 0) return byTable;
+        await using var cmd = new NpgsqlCommand("""
+            select i.indrelid, ic.relname, pg_get_indexdef(i.indexrelid), i.indisprimary, i.indisunique, i.indisvalid
+            from pg_index i join pg_class ic on ic.oid = i.indexrelid
+            where i.indrelid = any($1)
+            order by i.indrelid, i.indisprimary desc, ic.relname
+            """, conn);
+        cmd.Parameters.Add(new NpgsqlParameter { Value = oids, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Oid });
+        await using var r = await cmd.ExecuteReaderAsync(ct);
+        while (await r.ReadAsync(ct))
+        {
+            // "CREATE UNIQUE INDEX x ON s.t USING btree (a, b) WHERE …" → "x UNIQUE (a, b) WHERE …"
+            var def = r.GetString(2);
+            var using_ = def.IndexOf(" USING ", StringComparison.Ordinal);
+            var body = using_ < 0 ? def : def[(using_ + 7)..];
+            if (body.StartsWith("btree ", StringComparison.Ordinal)) body = body[6..];
+            var flags = r.GetBoolean(3) ? " PK" : r.GetBoolean(4) ? " UNIQUE" : "";
+            if (!r.GetBoolean(5)) flags += " INVALID";
+            var oid = r.GetFieldValue<uint>(0);
+            if (!byTable.TryGetValue(oid, out var list)) byTable[oid] = list = [];
+            list.Add($"{r.GetString(1)}{flags} {body}");
+        }
+        return byTable;
     }
 
     static bool References(Table from, Table to) =>

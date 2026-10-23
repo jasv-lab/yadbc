@@ -68,6 +68,26 @@ const CLAUSE_WORDS = new Set([
   'outer',
   'into',
   'tablesample',
+  // A next statement without a `;` in between (`from t` ⏎ `update t …`) isn't an alias of t.
+  'insert',
+  'update',
+  'delete',
+  'merge',
+  'with',
+  'create',
+  'alter',
+  'drop',
+  'truncate',
+  'begin',
+  'commit',
+  'rollback',
+  'explain',
+  'vacuum',
+  'analyze',
+  'grant',
+  'revoke',
+  'call',
+  'copy',
 ])
 
 export function tokenize(sql: string): Token[] {

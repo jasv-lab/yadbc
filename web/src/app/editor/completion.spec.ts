@@ -29,6 +29,17 @@ describe('relationRefs', () => {
     ])
   })
 
+  it('takes no alias from the next statement when the `;` is missing', () => {
+    expect(relationRefs(tokenize('select\nfrom invoices\n\nupdate invoices set id = 1'))).toEqual([
+      { schema: undefined, name: 'invoices', alias: undefined },
+      { schema: undefined, name: 'invoices', alias: undefined },
+    ])
+    expect(relationRefs(tokenize('select * from t\ninsert into u values (1)'))).toEqual([
+      { schema: undefined, name: 't', alias: undefined },
+      { schema: undefined, name: 'u', alias: undefined },
+    ])
+  })
+
   it('folds unquoted names and keeps quoted ones exact', () => {
     expect(relationRefs(tokenize('select * from Users "Mixed""Case"'))).toEqual([
       { schema: undefined, name: 'users', alias: 'Mixed"Case' },

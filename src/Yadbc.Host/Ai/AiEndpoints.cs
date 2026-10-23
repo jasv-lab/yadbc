@@ -215,7 +215,9 @@ public static class AiEndpoints
     {
         await using var conn = await sources.OpenCatalogAsync(input.ConnectionId, ct);
         // The whole conversation: a follow-up ("now group it by host") still means the tables asked about before.
-        var mentions = (input.Context?.Sql ?? "") + "\n" + string.Join("\n", input.Messages.Where(m => m.Role == "user").Select(m => m.Content));
+        // …and a plan's tables too ("Seq Scan on virtual_machines"): asked about a view, they're behind it.
+        var mentions = (input.Context?.Sql ?? "") + "\n" + (input.Context?.Plan ?? "") + "\n"
+            + string.Join("\n", input.Messages.Where(m => m.Role == "user").Select(m => m.Content));
         var schema = await AiContext.SchemaAsync(conn, mentions, ct);
         var sb = new StringBuilder(BasePrompt(conn.PostgreSqlVersion.ToString()));
         sb.AppendLine().AppendLine().AppendLine(schema);
@@ -231,6 +233,9 @@ public static class AiEndpoints
         Answer briefly and concretely, for an experienced developer. Use the schema below — don't invent tables or columns;
         if something needed isn't there, say so. When you give SQL, give one complete PostgreSQL statement per ```sql block.
         Point out when a statement changes or deletes data. Never ask for or reveal passwords or keys.
+        The tables in question list every index they have: check them before suggesting an index, and never
+        suggest one that exists (or that an existing index's leading columns already cover). Don't hedge
+        with IF NOT EXISTS for that: say which ones are already there.
         """;
 
     static void Authorize(HttpRequestMessage req, string? key)
