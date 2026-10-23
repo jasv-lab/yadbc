@@ -70,6 +70,11 @@ import { Edits } from './edits'
       border-color: var(--accent);
       color: var(--accent-fg);
     }
+    /* Outranks .btn:hover, which would swap the accent for the hover tint under dark text. */
+    .btn-primary:hover {
+      background: var(--accent);
+      filter: brightness(1.08);
+    }
   `,
 })
 export class EditsPanel {
