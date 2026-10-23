@@ -23,6 +23,9 @@ const FADE = 24
     class: 'scroll-strip',
     '[style.mask-image]': 'mask()',
     '(wheel)': 'onWheel($event)',
+    // A scrollable strip would start the browser's middle-button autoscroll and swallow the
+    // middle click (closing a tab); the wheel scrolls it instead.
+    '(mousedown)': 'onMouseDown($event)',
     '(scroll)': 'measure()',
   },
 })
@@ -73,6 +76,11 @@ export class ScrollStrip {
     this.overflowing.set(scrollWidth > clientWidth + 1)
     this.hiddenStart.set(scrollLeft > 1)
     this.hiddenEnd.set(scrollLeft + clientWidth < scrollWidth - 1)
+  }
+
+  /** Not a `&&` expression in the binding: a listener returning false makes Angular cancel every press. */
+  protected onMouseDown(e: MouseEvent) {
+    if (e.button === 1) e.preventDefault()
   }
 
   /** A vertical wheel scrolls the strip sideways (a touchpad's sideways swipe already does). */
