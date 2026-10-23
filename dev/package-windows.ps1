@@ -13,10 +13,12 @@ function Run([string]$exe) {
     if ($LASTEXITCODE -ne 0) { throw "$exe $args failed ($LASTEXITCODE)" }
 }
 
+# npm.cmd / npx.cmd, not npm / npx: those resolve to npm.ps1, which rebuilds its arguments from the
+# calling line and so loses them when called through Run.
 Push-Location (Join-Path $root 'web')
 try {
-    if (-not (Test-Path node_modules)) { Run npm ci }
-    Run npx ng build
+    if (-not (Test-Path node_modules)) { Run npm.cmd ci }
+    Run npx.cmd ng build
 } finally { Pop-Location }
 
 Remove-Item -Recurse -Force $dist -ErrorAction SilentlyContinue
