@@ -3,7 +3,9 @@
 *Yet another database client.* A personal, fast, uncluttered PostgreSQL client:
 a .NET 10 host (Kestrel on 127.0.0.1 + a Photino desktop window) with an Angular UI.
 
-Windows for now: passwords live in Windows Credential Manager, and tunnels use Windows OpenSSH.
+Windows and Linux. Passwords live in the OS's store: Windows Credential Manager, or the desktop keyring on Linux
+(GNOME Keyring / KWallet through `secret-tool`). SSH tunnels use the system's OpenSSH (on Windows the built-in one,
+so the Windows / 1Password SSH agent works).
 
 Design and decisions: [docs/design.md](docs/design.md) · UI debate verdict: [docs/ui-debate-verdict.md](docs/ui-debate-verdict.md)
 
@@ -28,11 +30,24 @@ version downloads in the background and the status bar offers *Restart to update
 connections and settings live in `%AppData%\yadbc`, apart from the app, so updating or uninstalling keeps them.
 The installer isn't signed yet: SmartScreen asks once (*More info → Run anyway*).
 
-Tag `v1.2.3` to release: CI builds the installer and attaches it to a GitHub release. To build it locally,
-run this (output in `dist/release`):
+**Linux:** `yadbc.AppImage` from a release: `chmod +x yadbc.AppImage` and run it. It updates itself the same way.
+It needs the system's web view and keyring tools (Debian / Ubuntu names):
+
+```bash
+sudo apt install libwebkit2gtk-4.1-0 libnotify4 libsecret-tools
+```
+
+Settings go to `~/.config/yadbc`.
+
+Tag `v1.2.3` to release: CI builds the Windows installer and the Linux AppImage and attaches both to a GitHub
+release. To build them locally, run this (output in `dist/release`; the Linux one also runs in git-bash):
 
 ```bash
 powershell -ExecutionPolicy Bypass -File dev/package-windows.ps1 -Version 0.1.0
+```
+
+```bash
+bash dev/package-linux.sh 0.1.0
 ```
 
 ### Privacy

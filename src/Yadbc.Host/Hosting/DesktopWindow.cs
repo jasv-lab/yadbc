@@ -20,8 +20,8 @@ public static class DesktopWindow
             // Photino logs every call, including Load(url) with the per-launch token in it.
             .SetLogVerbosity(0)
             .SetTitle("yadbc")
-            // Title bar and taskbar; without it Windows shows the generic window icon.
-            .SetIconFile(Path.Combine(AppContext.BaseDirectory, "yadbc.ico"))
+            // Title bar and taskbar; without it Windows shows the generic window icon. GTK takes the PNG.
+            .SetIconFile(Path.Combine(AppContext.BaseDirectory, OperatingSystem.IsWindows() ? "yadbc.ico" : "yadbc.png"))
             .SetUseOsDefaultSize(false)
             .SetSize(1440, 900)
             .SetResizable(true)

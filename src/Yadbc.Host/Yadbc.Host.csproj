@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <None Include="yadbc.ico" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="yadbc.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

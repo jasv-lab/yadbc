@@ -1,4 +1,5 @@
-# The yadbc icon (python dev/make-icon.py src/Yadbc.Host/yadbc.ico, then copy it to web/public/favicon.ico):
+# The yadbc icon (python dev/make-icon.py src/Yadbc.Host/yadbc.ico, then copy it to web/public/favicon.ico);
+# a 256 px yadbc.png beside it is the Linux icon (window, AppImage).
 # an indigo rounded square with a white database cylinder, drawn big and scaled down per size.
 import sys
 from PIL import Image, ImageDraw
@@ -40,3 +41,4 @@ def draw(n, bold=False):
 sizes = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 frames = [draw(n, bold=n <= 24) for n in sizes]
 frames[-1].save(sys.argv[1], format='ICO', sizes=[(n, n) for n in sizes], append_images=frames[:-1])
+frames[-1].save(sys.argv[1].rsplit('.', 1)[0] + '.png')
