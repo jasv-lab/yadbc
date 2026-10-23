@@ -52,7 +52,7 @@ export interface RunSummary {
 
 export type TabStatus = 'connecting' | 'ready' | 'running' | 'failed'
 
-/** One editor tab, bound to exactly one connection for its whole life. */
+/** One editor tab, bound to exactly one connection for its whole life (its profile follows edits). */
 export class EditorTab {
   readonly kind = 'editor'
   readonly status = signal<TabStatus>('connecting')
@@ -86,8 +86,8 @@ export class EditorTab {
 
   constructor(
     readonly id: string,
-    readonly connection: ConnectionProfile,
-    readonly title: string,
+    public connection: ConnectionProfile,
+    public title: string,
   ) {}
 }
 
@@ -97,8 +97,8 @@ export class ActivityTab {
 
   constructor(
     readonly id: string,
-    readonly connection: ConnectionProfile,
-    readonly title: string,
+    public connection: ConnectionProfile,
+    public title: string,
   ) {}
 }
 
@@ -109,7 +109,7 @@ export class DiagramTab {
 
   constructor(
     readonly id: string,
-    readonly connection: ConnectionProfile,
+    public connection: ConnectionProfile,
     schema: string,
   ) {
     this.schema = signal(schema)
@@ -191,6 +191,11 @@ export class Workspace {
 
   constructor() {
     this.socket.events$.pipe(takeUntilDestroyed(inject(DestroyRef))).subscribe((e) => this.onEvent(e))
+    // An edited connection (or a synced shared one) reaches its open tabs.
+    effect(() => {
+      const profiles = this.connections.list()
+      untracked(() => this.applyProfiles(profiles))
+    })
     // Restored tabs connect when first shown — not all at once on start (prod ones, tunnels…).
     effect(() => {
       const tab = this.activeTab()
@@ -311,6 +316,40 @@ export class Workspace {
     if (!tabs.length) return
     const i = tabs.findIndex((t) => t.id === this.activeTabId())
     this.activeTabId.set(tabs[(i + delta + tabs.length) % tabs.length].id)
+  }
+
+  /**
+   * Open tabs keep the profile they were opened with: after a reload, swap in the current one, follow a
+   * rename in the titles, and reopen editor sessions (and reload the schema) whose target changed —
+   * host, port, database, user, tunnel — or the tab would show the new database but query the old one.
+   */
+  private applyProfiles(profiles: ConnectionProfile[]) {
+    const byId = new Map(profiles.map((p) => [p.id, p]))
+    const retargeted = new Set<string>()
+    let changed = false
+    for (const tab of this.tabs()) {
+      if (tab.kind === 'compare') {
+        const source = byId.get(tab.source().id)
+        const target = byId.get(tab.target().id)
+        if (source && source !== tab.source()) tab.source.set(source)
+        if (target && target !== tab.target()) tab.target.set(target)
+        continue
+      }
+      const next = byId.get(tab.connection.id)
+      if (!next || next === tab.connection) continue
+      const before = tab.connection
+      tab.connection = next
+      if (tab.kind !== 'diagram' && before.name !== next.name)
+        tab.title = renamed(tab.title, before.name, next.name)
+      if (sessionTarget(before) !== sessionTarget(next)) {
+        if (tab.kind === 'editor' && !tab.lazy) this.reconnect(tab)
+        retargeted.add(next.id)
+      }
+      changed = true
+    }
+    // Another database: the cached schema (tree, autocomplete) is the old one's.
+    for (const id of retargeted) this.catalog.refresh(id)
+    if (changed) this.tabs.set([...this.tabs()])
   }
 
   reconnect(tab: EditorTab) {
@@ -467,4 +506,16 @@ export class Workspace {
   connectionsChanged() {
     this.connections.reload().subscribe()
   }
+}
+
+/** What an open session is connected to: when this changes, the session has to be reopened. */
+function sessionTarget(c: ConnectionProfile): string {
+  return JSON.stringify([c.host, c.port, c.database, c.username, c.tunnel ?? null])
+}
+
+/** "cmdb (2)" → "cmdb-prod (2)", "Activity · cmdb" → "Activity · cmdb-prod". */
+function renamed(title: string, from: string, to: string): string {
+  if (title === from || title.startsWith(`${from} (`)) return to + title.slice(from.length)
+  if (title.endsWith(` · ${from}`)) return title.slice(0, title.length - from.length) + to
+  return title
 }
