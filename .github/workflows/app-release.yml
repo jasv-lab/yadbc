@@ -1,17 +1,23 @@
 name: App release
 
 # Tag v1.2.3 → the Windows installer (dev/package-windows.ps1) attached to a GitHub release v1.2.3.
+# With SignPath set up (repository variable SIGNPATH_ORGANIZATION_ID, secret SIGNPATH_API_TOKEN), the
+# installer is signed first; the run waits for an approver to approve the request in SignPath.
+# Without them, the release goes out unsigned.
 on:
   push:
     tags: ['v*']
 
 permissions:
   contents: write
+  actions: read # SignPath downloads the unsigned installer from this run's artifacts
 
 jobs:
   windows:
     name: Windows installer
     runs-on: windows-latest
+    env:
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -22,13 +28,49 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: Version
+        shell: pwsh
+        run: "'VERSION=' + $env:GITHUB_REF_NAME.TrimStart('v') >> $env:GITHUB_ENV"
       - name: Build the installer
         shell: pwsh
-        run: ./dev/package-windows.ps1 -Version $env:GITHUB_REF_NAME.TrimStart('v')
+        run: ./dev/package-windows.ps1 -Version $env:VERSION
+
+      - name: Upload the unsigned installer for signing
+        id: unsigned
+        if: env.SIGN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-installer
+          path: dist/release/yadbc-win-Setup.exe
+      - name: Sign the installer (SignPath)
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: yadbc
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          parameters: |
+            version: "${{ env.VERSION }}"
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600 # time for an approver to approve
+          output-artifact-directory: dist/signed
+      - name: Use the signed installer
+        if: env.SIGN == 'true'
+        shell: pwsh
+        run: |
+          Copy-Item dist/signed/yadbc-win-Setup.exe dist/release/yadbc-win-Setup.exe -Force
+          $sig = Get-AuthenticodeSignature dist/release/yadbc-win-Setup.exe
+          if ($sig.Status -ne 'Valid') { throw "Installer signature: $($sig.Status)" }
+          "Signed by: $($sig.SignerCertificate.Subject)"
+
       - name: Release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $assets = Get-ChildItem dist/release -File | ForEach-Object FullName
-          gh release create $env:GITHUB_REF_NAME @assets --title "yadbc $($env:GITHUB_REF_NAME.TrimStart('v'))" --generate-notes
+          $policy = "Code signing policy: https://github.com/$env:GITHUB_REPOSITORY#code-signing-policy"
+          gh release create $env:GITHUB_REF_NAME @assets --title "yadbc $env:VERSION" --notes $policy --generate-notes

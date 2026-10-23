@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "installer" (paste it into the SignPath project; this copy is the
+  reference). The release workflow uploads yadbc-win-Setup.exe as a GitHub artifact, which arrives
+  here as a ZIP holding that one file. Only the installer is signed: it's what people download and
+  what SmartScreen checks. The files inside are left as they are (Microsoft's .NET runtime files are
+  already signed by Microsoft; third-party libraries must not be signed with this certificate).
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <!-- Velopack stamps the installer with the package title and version: enforce both. -->
+    <pe-file path="yadbc-win-Setup.exe" product-name="yadbc" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
