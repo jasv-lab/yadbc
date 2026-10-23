@@ -57,7 +57,8 @@ public static class ShareMapping
             Enum.Parse<ConnectionEnv>(share.Env.ToString()),
             local?.Mcp, // a new install follows its environment's default, under the owner's ceiling
             tunnel,
-            Link(share, brokerUrl));
+            Link(share, brokerUrl),
+            local?.Group); // the group is yours, not the share's
     }
 
     /// <summary>The shareable part of a profile.</summary>
@@ -97,6 +98,7 @@ public static class ShareMapping
         {
             Mcp = input.Mcp,
             Tunnel = tunnel,
+            Group = ConnectionEndpoints.GroupName(input.Group),
             Username = current.Shared?.LoginMode == LoginMode.Own ? input.Username.Trim() : current.Username,
         };
     }

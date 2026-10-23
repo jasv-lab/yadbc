@@ -16,6 +16,8 @@ export interface ConnectionProfile {
   tunnel?: TunnelConfig | null
   /** Installed from the shared-connections broker; null = local. */
   shared?: SharedLink | null
+  /** Your own folder in the connection list; personal, also for installed shares. */
+  group?: string | null
   /** A "bring your own login" share whose login isn't entered yet. */
   needsLogin?: boolean
 }

@@ -79,10 +79,21 @@ function routeValid(g: AbstractControl): ValidationErrors | null {
         }
       }
 
-      <label class="field">
-        <span>Name</span>
-        <input formControlName="name" placeholder="billing-dev" autofocus />
-      </label>
+      <div class="grid grid-cols-[1fr_160px] gap-3">
+        <label class="field">
+          <span>Name</span>
+          <input formControlName="name" placeholder="billing-dev" autofocus />
+        </label>
+        <label class="field">
+          <span>Group</span>
+          <input formControlName="group" list="y-conn-groups" placeholder="none" />
+          <datalist id="y-conn-groups">
+            @for (g of groupNames(); track g) {
+              <option [value]="g"></option>
+            }
+          </datalist>
+        </label>
+      </div>
 
       <div class="field">
         <span>Connect</span>
@@ -378,6 +389,7 @@ function routeValid(g: AbstractControl): ValidationErrors | null {
 export class ConnectionDialog {
   protected readonly ref = inject<DialogRef<ConnectionProfile>>(DialogRef)
   private readonly connections = inject(Connections)
+  protected readonly groupNames = this.connections.groupNames
   protected readonly existing = inject<ConnectionProfile | null>(DIALOG_DATA, { optional: true })
   protected readonly envs = ENVS
   protected readonly routes = ROUTES
@@ -392,6 +404,7 @@ export class ConnectionDialog {
   protected readonly form = this.fb.group(
     {
       name: [this.existing?.name ?? '', Validators.required],
+      group: [this.existing?.group ?? ''],
       host: [this.existing?.host ?? 'localhost'],
       port: [this.existing?.port ?? 5432, [Validators.required, Validators.min(1), Validators.max(65535)]],
       database: [this.existing?.database ?? 'postgres', Validators.required],

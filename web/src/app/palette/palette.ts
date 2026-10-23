@@ -287,14 +287,18 @@ export class PaletteDialog {
 
     const connections = sorted(
       this.connections.list().map((c) =>
-        scored({
-          key: `conn:${c.id}`,
-          section: 'Connections',
-          label: c.name,
-          detail: `${c.env} · ${c.database}`,
-          icon: 'database',
-          run: () => this.data.openConnection(c),
-        }),
+        scored(
+          {
+            key: `conn:${c.id}`,
+            section: 'Connections',
+            label: c.name,
+            detail: `${c.group ? c.group + ' · ' : ''}${c.env} · ${c.database}`,
+            icon: 'database',
+            run: () => this.data.openConnection(c),
+          },
+          // "cmdb" finds every connection in the CMDB group.
+          c.group ? `${c.name} ${c.group}` : c.name,
+        ),
       ),
     )
     return [...objects, ...snippets, ...history, ...connections].slice(0, MAX_ITEMS)

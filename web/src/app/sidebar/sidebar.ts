@@ -80,18 +80,23 @@ const ENV_DOT = { local: 'bg-env-local', dev: 'bg-env-dev', prod: 'bg-env-prod' 
       }
     } @else {
       <div class="min-h-0 flex-1 overflow-y-auto px-1.5">
-        @for (c of connections.list(); track c.id) {
-          <button class="conn-row" (click)="open.emit(c)" [title]="describe(c)">
-            <span class="size-2 shrink-0 rounded-full" [class]="envDot[c.env]"></span>
-            <span class="min-w-0 flex-1 truncate text-left">{{ c.name }}</span>
-            <ng-container *ngTemplateOutlet="sharedMark; context: { $implicit: c }" />
-            @if (c.tunnel) {
-              <y-icon name="tunnel" [size]="13" class="text-faint" />
-            }
-            @if (c.env === 'prod') {
-              <y-icon name="lock" [size]="13" class="text-faint" />
-            }
-          </button>
+        @for (g of connections.groups(); track g.name) {
+          @if (g.name || connections.groups().length > 1) {
+            <div class="group-label">{{ g.name ?? 'Other' }}</div>
+          }
+          @for (c of g.connections; track c.id) {
+            <button class="conn-row" [class.indented]="!!g.name" (click)="open.emit(c)" [title]="describe(c)">
+              <span class="size-2 shrink-0 rounded-full" [class]="envDot[c.env]"></span>
+              <span class="min-w-0 flex-1 truncate text-left">{{ c.name }}</span>
+              <ng-container *ngTemplateOutlet="sharedMark; context: { $implicit: c }" />
+              @if (c.tunnel) {
+                <y-icon name="tunnel" [size]="13" class="text-faint" />
+              }
+              @if (c.env === 'prod') {
+                <y-icon name="lock" [size]="13" class="text-faint" />
+              }
+            </button>
+          }
         } @empty {
           <p class="px-2 py-3 text-[12px] text-faint">No connections yet.</p>
         }
@@ -100,16 +105,18 @@ const ENV_DOT = { local: 'bg-env-local', dev: 'bg-env-dev', prod: 'bg-env-prod' 
 
     <ng-template #switcherMenu>
       <div cdkMenu class="menu min-w-[244px]">
-        <div class="menu-label">Connections</div>
-        @for (c of connections.list(); track c.id) {
-          <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="open.emit(c)" [title]="describe(c)">
-            <span class="size-2 shrink-0 rounded-full" [class]="envDot[c.env]"></span>
-            <span class="min-w-0 flex-1 truncate">{{ c.name }}</span>
-            <ng-container *ngTemplateOutlet="sharedMark; context: { $implicit: c }" />
-            @if (c.id === current()?.id) {
-              <y-icon name="check" [size]="13" class="text-accent" />
-            }
-          </button>
+        @for (g of connections.groups(); track g.name; let first = $first) {
+          <div class="menu-label">{{ g.name ?? (first ? 'Connections' : 'Other') }}</div>
+          @for (c of g.connections; track c.id) {
+            <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="open.emit(c)" [title]="describe(c)">
+              <span class="size-2 shrink-0 rounded-full" [class]="envDot[c.env]"></span>
+              <span class="min-w-0 flex-1 truncate">{{ c.name }}</span>
+              <ng-container *ngTemplateOutlet="sharedMark; context: { $implicit: c }" />
+              @if (c.id === current()?.id) {
+                <y-icon name="check" [size]="13" class="text-accent" />
+              }
+            </button>
+          }
         }
         <div class="menu-sep"></div>
         <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="create.emit()">
@@ -166,6 +173,17 @@ const ENV_DOT = { local: 'bg-env-local', dev: 'bg-env-dev', prod: 'bg-env-prod' 
     </ng-template>
   `,
   styles: `
+    .group-label {
+      padding: 8px 8px 2px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--fg-faint);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .conn-row.indented {
+      padding-left: 14px;
+    }
     .mark {
       flex-shrink: 0;
       padding: 0 4px;

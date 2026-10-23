@@ -167,8 +167,11 @@ export class Sharing {
     return this.http.get<Person[]>('/api/sharing/users').pipe(catchError(() => of([])))
   }
 
-  install(shareId: string): Observable<ConnectionProfile> {
-    return this.http.post<ConnectionProfile>(`/api/sharing/install/${shareId}`, {}).pipe(this.reloading())
+  /** Into one of your groups (or none); the group is yours, not the share's. */
+  install(shareId: string, group: string | null): Observable<ConnectionProfile> {
+    return this.http
+      .post<ConnectionProfile>(`/api/sharing/install/${shareId}`, {}, { params: group ? { group } : {} })
+      .pipe(this.reloading())
   }
 
   /** Share a local connection, or change how an already shared one is shared. */

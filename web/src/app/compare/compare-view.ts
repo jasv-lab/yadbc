@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog'
+import { NgTemplateOutlet } from '@angular/common'
 import { CdkMenu, CdkMenuItemCheckbox, CdkMenuTrigger } from '@angular/cdk/menu'
 import {
   ChangeDetectionStrategy,
@@ -60,7 +61,7 @@ interface CompareResult {
 @Component({
   selector: 'y-compare-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, CdkMenu, CdkMenuItemCheckbox, CdkMenuTrigger],
+  imports: [Icon, NgTemplateOutlet, CdkMenu, CdkMenuItemCheckbox, CdkMenuTrigger],
   host: { class: 'flex min-h-0 flex-col bg-raised' },
   template: `
     @let t = tab();
@@ -73,9 +74,7 @@ interface CompareResult {
         (change)="setSource(val($event))"
         title="Source: the schema to copy"
       >
-        @for (c of connections.list(); track c.id) {
-          <option [value]="c.id" [selected]="c.id === t.source().id">{{ c.name }}</option>
-        }
+        <ng-container *ngTemplateOutlet="options; context: { $implicit: t.source().id }" />
       </select>
       <button class="icon-btn" title="Swap source and target" (click)="swap()">⇄</button>
       <span class="text-muted">to</span>
@@ -86,9 +85,7 @@ interface CompareResult {
         (change)="setTarget(val($event))"
         title="Target: the database the script changes"
       >
-        @for (c of connections.list(); track c.id) {
-          <option [value]="c.id" [selected]="c.id === t.target().id">{{ c.name }}</option>
-        }
+        <ng-container *ngTemplateOutlet="options; context: { $implicit: t.target().id }" />
       </select>
       <button class="pick-btn" [cdkMenuTriggerFor]="schemaMenu">
         {{ t.schemas() ? t.schemas()!.join(', ') : 'All schemas' }}
@@ -105,6 +102,22 @@ interface CompareResult {
         </span>
       }
     </div>
+
+    <ng-template #options let-selected>
+      @for (g of connections.groups(); track g.name) {
+        @if (g.name) {
+          <optgroup [label]="g.name">
+            @for (c of g.connections; track c.id) {
+              <option [value]="c.id" [selected]="c.id === selected">{{ c.name }} · {{ c.env }}</option>
+            }
+          </optgroup>
+        } @else {
+          @for (c of g.connections; track c.id) {
+            <option [value]="c.id" [selected]="c.id === selected">{{ c.name }} · {{ c.env }}</option>
+          }
+        }
+      }
+    </ng-template>
 
     <ng-template #schemaMenu>
       <div cdkMenu class="menu min-w-[200px]">

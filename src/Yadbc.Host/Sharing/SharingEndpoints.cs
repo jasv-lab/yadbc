@@ -67,11 +67,11 @@ public static class SharingEndpoints
 
         api.MapGet("/users", (Broker broker, CancellationToken ct) => TryAsync(async () => Results.Ok(await broker.UsersAsync(ct))));
 
-        api.MapPost("/install/{shareId}", (string shareId, Broker broker, ConnectionStore store, CancellationToken ct) => TryAsync(async () =>
+        api.MapPost("/install/{shareId}", (string shareId, string? group, Broker broker, ConnectionStore store, CancellationToken ct) => TryAsync(async () =>
         {
             if (store.All().FirstOrDefault(p => p.Shared?.ShareId == shareId) is { } already) return Results.Ok(already);
             var share = await broker.GetShareAsync(shareId, ct);
-            var profile = ShareMapping.Apply(share, broker.Url!, NewProfileId(), null);
+            var profile = ShareMapping.Apply(share, broker.Url!, NewProfileId(), null) with { Group = ConnectionEndpoints.GroupName(group) };
             store.Upsert(profile);
             await broker.InstallAsync(shareId, ct);
             return Results.Ok(profile);

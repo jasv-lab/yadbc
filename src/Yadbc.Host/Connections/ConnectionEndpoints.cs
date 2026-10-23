@@ -122,5 +122,9 @@ public static class ConnectionEndpoints
 
     static ConnectionProfile ToProfile(string id, ConnectionInput i) =>
         new(id, i.Name.Trim(), i.Host.Trim(), i.Port, i.Database.Trim(), i.Username.Trim(), i.Env, i.Mcp,
-            i.Tunnel is null || string.IsNullOrWhiteSpace(i.Tunnel.Kind) ? null : i.Tunnel);
+            i.Tunnel is null || string.IsNullOrWhiteSpace(i.Tunnel.Kind) ? null : i.Tunnel,
+            Group: GroupName(i.Group));
+
+    /// <summary>Blank = no group.</summary>
+    public static string? GroupName(string? group) => string.IsNullOrWhiteSpace(group) ? null : group.Trim();
 }

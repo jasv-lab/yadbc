@@ -23,6 +23,8 @@ public sealed record ConnectionProfile(
     TunnelConfig? Tunnel = null,
     /// <summary>Installed from the shared-connections broker; null = a local connection.</summary>
     SharedLink? Shared = null,
+    /// <summary>Your own folder in the connection list ("CMDB"); personal, even for installed shares.</summary>
+    string? Group = null,
     /// <summary>Listing only (never saved): a "bring your own login" share whose login isn't entered yet.</summary>
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool NeedsLogin = false)
 {
@@ -43,4 +45,5 @@ public sealed record ConnectionInput(
     ConnectionEnv Env,
     string? Password,
     bool? Mcp = null,
-    TunnelConfig? Tunnel = null);
+    TunnelConfig? Tunnel = null,
+    string? Group = null);

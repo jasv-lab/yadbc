@@ -1,5 +1,5 @@
 import { HttpClient } from '@angular/common/http'
-import { inject, Injectable, signal } from '@angular/core'
+import { computed, inject, Injectable, signal } from '@angular/core'
 import { Observable, tap } from 'rxjs'
 import { ConnectionInput, ConnectionProfile } from '../core/protocol'
 
@@ -23,11 +23,38 @@ export interface KubeScope {
   ns?: string | null
 }
 
+export interface ConnectionGroup {
+  /** null: connections without a group, listed last */
+  name: string | null
+  connections: ConnectionProfile[]
+}
+
+const ENV_ORDER = { local: 0, dev: 1, prod: 2 } as const
+
+/** Groups by name (case-insensitive), ungrouped last; inside a group local → dev → prod, then by name. */
+export function grouped(list: ConnectionProfile[]): ConnectionGroup[] {
+  const groups = new Map<string, ConnectionGroup>()
+  for (const c of list) {
+    const name = c.group?.trim() || null
+    const key = name?.toLowerCase() ?? ''
+    const g = groups.get(key) ?? { name, connections: [] }
+    g.connections.push(c)
+    groups.set(key, g)
+  }
+  const out = [...groups.values()]
+  for (const g of out)
+    g.connections.sort((a, b) => ENV_ORDER[a.env] - ENV_ORDER[b.env] || a.name.localeCompare(b.name))
+  return out.sort((a, b) => (a.name === null ? 1 : b.name === null ? -1 : a.name.localeCompare(b.name)))
+}
+
 @Injectable({ providedIn: 'root' })
 export class Connections {
   private readonly http = inject(HttpClient)
 
   readonly list = signal<ConnectionProfile[]>([])
+  readonly groups = computed(() => grouped(this.list()))
+  /** Group names in use, for suggestions. */
+  readonly groupNames = computed(() => this.groups().flatMap((g) => (g.name ? [g.name] : [])))
 
   constructor() {
     this.reload().subscribe()

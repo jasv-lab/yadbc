@@ -272,13 +272,23 @@ export class Workspace {
     this.activeTabId.set(tab.id)
   }
 
-  /** Compare from `source` (the active connection) to the most recently used other one, or itself. */
+  /**
+   * Compare from `source` (the active connection) to a sibling in its group — prod, or dev when the
+   * source is prod — else the most recently used other connection.
+   */
   openCompare(source: ConnectionProfile, target?: ConnectionProfile) {
     const used = this.tabs()
       .map((t) => t.connection)
       .reverse()
+    const group = source.group?.trim().toLowerCase()
+    const siblings = group
+      ? this.connections.list().filter((c) => c.id !== source.id && c.group?.trim().toLowerCase() === group)
+      : []
+    const sibling =
+      siblings.find((c) => (source.env === 'prod' ? c.env === 'dev' : c.env === 'prod')) ?? siblings[0]
     const other =
       target ??
+      sibling ??
       used.find((c) => c.id !== source.id) ??
       this.connections.list().find((c) => c.id !== source.id) ??
       source

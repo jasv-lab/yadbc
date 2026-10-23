@@ -1,6 +1,7 @@
 import { DialogRef } from '@angular/cdk/dialog'
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core'
 import { Connections } from '../connections/connections'
+import { Session } from '../core/session'
 import { ConnectionProfile } from '../core/protocol'
 import { Icon } from '../ui/icon'
 import { CatalogEntry, Sharing, sharingError } from './sharing'
@@ -79,6 +80,24 @@ const ENV_DOT = { local: 'bg-env-local', dev: 'bg-env-dev', prod: 'bg-env-prod' 
             cdkFocusInitial
           />
         </div>
+        <label
+          class="flex items-center gap-1.5 text-[12px] text-muted"
+          title="The group in your connection list that installs go into"
+        >
+          Install into
+          <input
+            class="h-7 w-[140px] rounded border border-line bg-bg px-2 text-[12.5px] text-fg outline-none"
+            list="y-catalog-groups"
+            placeholder="no group"
+            [value]="installGroup()"
+            (input)="setInstallGroup($any($event.target).value)"
+          />
+          <datalist id="y-catalog-groups">
+            @for (g of connections.groupNames(); track g) {
+              <option [value]="g"></option>
+            }
+          </datalist>
+        </label>
       </div>
       <div class="min-h-[120px] flex-1 overflow-y-auto px-2 pb-2">
         @for (e of shown(); track e.share.id) {
@@ -230,7 +249,10 @@ const ENV_DOT = { local: 'bg-env-local', dev: 'bg-env-dev', prod: 'bg-env-prod' 
 export class CatalogDialog {
   protected readonly ref = inject<DialogRef<ConnectionProfile>>(DialogRef)
   protected readonly sharing = inject(Sharing)
-  private readonly connections = inject(Connections)
+  protected readonly connections = inject(Connections)
+  private readonly session = inject(Session)
+  /** Remembered between installs and sessions. */
+  protected readonly installGroup = signal(this.session.pref<string>('installGroup', ''))
   protected readonly envDot = ENV_DOT
 
   protected readonly entries = signal<CatalogEntry[]>([])
@@ -279,6 +301,11 @@ export class CatalogDialog {
     })
   }
 
+  protected setInstallGroup(group: string) {
+    this.installGroup.set(group)
+    this.session.setPref('installGroup', group.trim())
+  }
+
   protected ownerNames(e: CatalogEntry) {
     const names = e.share.owners.map((o) => o.name)
     return names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2}` : names.join(', ')
@@ -307,7 +334,7 @@ export class CatalogDialog {
   protected install(e: CatalogEntry) {
     this.busy.set(e.share.id)
     this.error.set(null)
-    this.sharing.install(e.share.id).subscribe({
+    this.sharing.install(e.share.id, this.installGroup().trim() || null).subscribe({
       next: (profile) => {
         this.busy.set(null)
         this.entries.update((list) =>
