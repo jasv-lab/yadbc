@@ -64,6 +64,28 @@ static class Schema
         );
         create index audit_share on audit (share_id, id);
         """,
+        """
+        -- Team-wide settings (the AI assistant's endpoint and model; its key encrypted like share logins).
+        create table settings (
+            name text primary key,
+            value text not null,
+            secret blob,
+            updated_by text not null references users(id),
+            updated_at integer not null
+        );
+        """,
+        """
+        -- Shared snippets: with everyone who installed a share (share_id), or with the whole team (null).
+        create table snippets (
+            id text primary key,
+            share_id text references shares(id) on delete cascade,
+            name text not null,
+            sql text not null,
+            created_by text not null references users(id),
+            updated_by text not null references users(id),
+            updated_at integer not null
+        );
+        """,
     ];
 
     public static void Migrate(Sql sql)

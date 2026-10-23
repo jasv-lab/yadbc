@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Yadbc.Host.Connections;
 using Yadbc.Host.Hosting;
+using Yadbc.Host.Sharing;
 
 namespace Yadbc.Host.Ai;
 
@@ -52,6 +53,21 @@ public sealed class AiSettings(SecretStore secrets)
         if (key is null) return;
         if (key.Length == 0) secrets.DeleteAppSecret(KeyName);
         else secrets.SetAppSecret(KeyName, key);
+    }
+
+    /// <summary>What the assistant actually uses, and where it came from.</summary>
+    public sealed record Effective(string? Endpoint, string? Model, int MaxTokens, string? Key, string Source);
+
+    /// <summary>
+    /// Your own endpoint wins outright. Without one, the team's settings from the broker apply; with
+    /// your own key if you set one, else the team's key if it shares one.
+    /// </summary>
+    public async Task<Effective> EffectiveAsync(TeamAiSettings team, CancellationToken ct)
+    {
+        var own = Load();
+        if (!string.IsNullOrWhiteSpace(own.Endpoint)) return new(own.Endpoint, own.Model, own.MaxTokens, Key, "own");
+        if (team.Current is { } t) return new(t.Endpoint, t.Model, t.MaxTokens, Key ?? await team.KeyAsync(ct), "team");
+        return new(null, null, own.MaxTokens, Key, "none");
     }
 
     /// <summary>"https://llm.example" and ".../v1" both work: the OpenAI routes live under /v1.</summary>

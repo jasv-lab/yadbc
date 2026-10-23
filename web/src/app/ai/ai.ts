@@ -3,11 +3,24 @@ import { inject, Injectable, signal } from '@angular/core'
 import { firstValueFrom } from 'rxjs'
 import { apiToken } from '../core/token'
 
+/** What the assistant uses (endpoint, model, key) and the two sources behind it. */
 export interface AiConfig {
   endpoint: string | null
   model: string | null
   maxTokens: number
   hasKey: boolean
+  source: 'own' | 'team' | 'none'
+  own: { endpoint: string | null; model: string | null; maxTokens: number; hasKey: boolean }
+  team: {
+    endpoint: string
+    model: string
+    maxTokens: number
+    hasKey: boolean
+    updatedBy: string
+    updatedAt: string
+  } | null
+  /** An admin on the broker: may share their own settings with the team. */
+  canShare: boolean
 }
 
 /** Where a suggested statement would go back to: the statement the question was about. */
@@ -56,6 +69,17 @@ export class Ai {
 
   async saveConfig(input: { endpoint: string; model: string; maxTokens: number; key: string | null }) {
     await firstValueFrom(this.http.put('/api/ai/settings', input))
+    await this.loadConfig()
+  }
+
+  /** Admins: your own endpoint and model become the team's, with your key or without. */
+  async share(includeKey: boolean) {
+    await firstValueFrom(this.http.post('/api/ai/share', { includeKey }))
+    await this.loadConfig()
+  }
+
+  async stopSharing() {
+    await firstValueFrom(this.http.delete('/api/ai/share'))
     await this.loadConfig()
   }
 

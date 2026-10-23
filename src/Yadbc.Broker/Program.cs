@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Yadbc.Broker;
 using Yadbc.Broker.Auth;
 using Yadbc.Broker.Shares;
+using Yadbc.Broker.Snippets;
 using Yadbc.Broker.Storage;
+using Yadbc.Broker.Team;
 
 // yadbc's shared-connections broker: a team catalog of connections and their logins (docs/design.md §10b).
 // It never connects to a database; it hands out connection details to signed-in people.
@@ -64,6 +66,8 @@ app.MapGet("/healthz", async (Db db) => await db.Run(sql => sql.Scalar<long>("se
 app.MapLoginFlow();
 app.MapDeviceEndpoints();
 app.MapShareEndpoints();
+app.MapTeamEndpoints();
+app.MapSnippetEndpoints();
 
 app.Run();
 

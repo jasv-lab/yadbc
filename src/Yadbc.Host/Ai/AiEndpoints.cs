@@ -3,7 +3,9 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Npgsql;
+using Yadbc.Contracts.Broker;
 using Yadbc.Host.Connections;
+using Yadbc.Host.Sharing;
 
 namespace Yadbc.Host.Ai;
 
@@ -17,6 +19,8 @@ public static class AiEndpoints
 
     public sealed record SettingsInput(string? Endpoint, string? Model, int? MaxTokens, string? Key);
 
+    public sealed record ShareAiInput(bool IncludeKey);
+
     public sealed record ChatMessage(string Role, string Content);
 
     public sealed record ChatContext(string? Sql, string? Error, string? Plan);
@@ -27,10 +31,56 @@ public static class AiEndpoints
     {
         var api = app.MapGroup("/api/ai");
 
-        api.MapGet("/settings", (AiSettings settings) =>
+        // What's in use (endpoint, model…: what the panel shows), and the two sources behind it.
+        api.MapGet("/settings", (AiSettings settings, TeamAiSettings team, Broker broker) =>
         {
-            var c = settings.Load();
-            return Results.Ok(new { c.Endpoint, c.Model, c.MaxTokens, hasKey = settings.Key is not null });
+            var own = settings.Load();
+            var t = team.Current;
+            var useOwn = !string.IsNullOrWhiteSpace(own.Endpoint);
+            var ownKey = settings.Key is not null;
+            return Results.Ok(new
+            {
+                endpoint = useOwn ? own.Endpoint : t?.Endpoint,
+                model = useOwn ? own.Model : t?.Model,
+                maxTokens = useOwn || t is null ? own.MaxTokens : t.MaxTokens,
+                hasKey = ownKey || (!useOwn && t is { HasKey: true }),
+                source = useOwn ? "own" : t is null ? "none" : "team",
+                own = new { own.Endpoint, own.Model, own.MaxTokens, hasKey = ownKey },
+                team = t is null ? null : new { t.Endpoint, t.Model, t.MaxTokens, t.HasKey, updatedBy = t.UpdatedBy.Name, t.UpdatedAt },
+                canShare = broker.IsAdmin,
+            });
+        });
+
+        // Admins: your own settings become the team's (with the key, or for everyone to bring their own).
+        api.MapPost("/share", async (ShareAiInput input, AiSettings settings, TeamAiSettings team, Broker broker, CancellationToken ct) =>
+        {
+            var own = settings.Load();
+            if (string.IsNullOrWhiteSpace(own.Endpoint) || string.IsNullOrWhiteSpace(own.Model))
+                return Results.BadRequest(new { error = "Save your own endpoint and model first; those are what gets shared." });
+            try
+            {
+                await broker.ShareTeamAiAsync(new TeamAiInput(own.Endpoint, own.Model, own.MaxTokens, input.IncludeKey ? settings.Key : null), ct);
+                await team.RefreshAsync(ct);
+                return Results.NoContent();
+            }
+            catch (BrokerException e)
+            {
+                return Results.BadRequest(new { error = e.Message });
+            }
+        });
+
+        api.MapDelete("/share", async (TeamAiSettings team, Broker broker, CancellationToken ct) =>
+        {
+            try
+            {
+                await broker.StopTeamAiAsync(ct);
+                await team.RefreshAsync(ct);
+                return Results.NoContent();
+            }
+            catch (BrokerException e)
+            {
+                return Results.BadRequest(new { error = e.Message });
+            }
         });
 
         api.MapPut("/settings", (SettingsInput input, AiSettings settings) =>
@@ -47,14 +97,15 @@ public static class AiEndpoints
         });
 
         // The endpoint's models — also how "Test" checks the URL and key.
-        api.MapPost("/models", async (SettingsInput input, AiSettings settings, IHttpClientFactory http, CancellationToken ct) =>
+        api.MapPost("/models", async (SettingsInput input, AiSettings settings, TeamAiSettings team, IHttpClientFactory http, CancellationToken ct) =>
         {
-            var endpoint = input.Endpoint ?? settings.Load().Endpoint;
+            var effective = await settings.EffectiveAsync(team, ct);
+            var endpoint = string.IsNullOrWhiteSpace(input.Endpoint) ? effective.Endpoint : input.Endpoint;
             if (string.IsNullOrWhiteSpace(endpoint)) return Results.BadRequest(new { error = "No endpoint set." });
             try
             {
                 using var req = new HttpRequestMessage(HttpMethod.Get, AiSettings.BaseUrl(endpoint) + "/models");
-                Authorize(req, string.IsNullOrEmpty(input.Key) ? settings.Key : input.Key);
+                Authorize(req, string.IsNullOrEmpty(input.Key) ? effective.Key : input.Key);
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeout.CancelAfter(TimeSpan.FromSeconds(15));
                 using var res = await http.CreateClient("llm").SendAsync(req, timeout.Token);
@@ -69,10 +120,10 @@ public static class AiEndpoints
             }
         });
 
-        api.MapPost("/chat", async (ChatInput input, HttpContext ctx, AiSettings settings, DataSourceCache sources,
+        api.MapPost("/chat", async (ChatInput input, HttpContext ctx, AiSettings settings, TeamAiSettings team, DataSourceCache sources,
             IHttpClientFactory http, CancellationToken ct) =>
         {
-            var config = settings.Load();
+            var config = await settings.EffectiveAsync(team, ct);
             var res = ctx.Response;
             res.Headers.ContentType = "text/event-stream";
             res.Headers.CacheControl = "no-cache";
@@ -118,7 +169,7 @@ public static class AiEndpoints
                 {
                     Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
                 };
-                Authorize(req, settings.Key);
+                Authorize(req, config.Key);
                 using var upstream = await http.CreateClient("llm").SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
                 if (!upstream.IsSuccessStatusCode)
                 {

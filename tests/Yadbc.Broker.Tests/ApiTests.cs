@@ -259,6 +259,78 @@ public class ApiTests(BrokerFixture broker) : IClassFixture<BrokerFixture>
     }
 
     [Fact]
+    public async Task Team_AI_settings_are_read_by_all_set_by_admins_and_the_key_fetch_is_audited()
+    {
+        var admin = await SignIn("Admin", admin: true);
+        var petr = await SignIn("Petr");
+        var input = new TeamAiInput("https://llm.example.com", "qwen3.6-27b", 8192, "sk-team");
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await petr.PutAsJsonAsync("/team/ai", input, Json)).StatusCode);
+        var shared = await (await admin.PutAsJsonAsync("/team/ai", input, Json)).EnsureSuccessStatusCode().Content.ReadFromJsonAsync<TeamAi>(Json);
+        Assert.True(shared!.HasKey);
+
+        var seen = await petr.GetFromJsonAsync<TeamAi>("/team/ai", Json);
+        Assert.Equal(("https://llm.example.com", "qwen3.6-27b", 8192, "Admin"), (seen!.Endpoint, seen.Model, seen.MaxTokens, seen.UpdatedBy.Name));
+        Assert.Equal("sk-team", (await petr.GetFromJsonAsync<TeamAiKey>("/team/ai/key", Json))!.Key);
+        var fetched = await broker.Factory.Services.GetRequiredService<Db>().Run(sql =>
+            sql.Scalar<long>("select count(*) from audit where action = 'team-ai-key-fetched'"));
+        Assert.True(fetched >= 1);
+
+        // Shared without the key: everyone brings their own.
+        await admin.PutAsJsonAsync("/team/ai", input with { Key = null }, Json);
+        Assert.False((await petr.GetFromJsonAsync<TeamAi>("/team/ai", Json))!.HasKey);
+        Assert.Equal(HttpStatusCode.Conflict, (await petr.GetAsync("/team/ai/key")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await petr.DeleteAsync("/team/ai")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync("/team/ai")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await petr.GetAsync("/team/ai")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Shared_snippets_are_changed_by_their_author_the_shares_owners_and_admins_and_go_with_the_share()
+    {
+        var jan = await SignIn("Jan");
+        var petr = await SignIn("Petr");
+        var eva = await SignIn("Eva");
+        var admin = await SignIn("Admin", admin: true);
+        var shareId = NewId();
+        await Create(jan, shareId, Input("Orders"));
+
+        // Petr shares one with everyone using Jan's connection, and one with the whole team.
+        var onShare = NewId();
+        var res = await petr.PutAsJsonAsync($"/snippets/{onShare}", new SharedSnippetInput("Late orders", "select 1", shareId), Json);
+        var saved = (await res.EnsureSuccessStatusCode().Content.ReadFromJsonAsync<SharedSnippet>(Json))!;
+        Assert.Equal(("Petr", shareId, true), (saved.Author.Name, saved.ShareId, saved.CanEdit));
+        var forTeam = NewId();
+        (await petr.PutAsJsonAsync($"/snippets/{forTeam}", new SharedSnippetInput("Locks", "select 2", null), Json)).EnsureSuccessStatusCode();
+
+        // Jan owns the share, so he can edit the snippet on it but not the team one; Eva neither; an admin both.
+        var seenByJan = (await jan.GetFromJsonAsync<SharedSnippet[]>("/snippets", Json))!.ToDictionary(s => s.Id);
+        Assert.True(seenByJan[onShare].CanEdit);
+        Assert.False(seenByJan[forTeam].CanEdit);
+        Assert.Equal(HttpStatusCode.OK, (await jan.PutAsJsonAsync($"/snippets/{onShare}", new SharedSnippetInput("Late orders", "select 3", shareId), Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await jan.DeleteAsync($"/snippets/{forTeam}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await eva.PutAsJsonAsync($"/snippets/{forTeam}", new SharedSnippetInput("Mine", "select 4", null), Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync($"/snippets/{forTeam}", new SharedSnippetInput("Locks", "select 5", null), Json)).StatusCode);
+
+        var updated = (await eva.GetFromJsonAsync<SharedSnippet[]>("/snippets", Json))!.Single(s => s.Id == onShare);
+        Assert.Equal(("select 3", "Jan", "Petr"), (updated.Sql, updated.UpdatedBy.Name, updated.Author.Name));
+
+        Assert.Equal(HttpStatusCode.NotFound, (await petr.PutAsJsonAsync($"/snippets/{NewId()}", new SharedSnippetInput("X", "select 1", NewId()), Json)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await petr.PutAsJsonAsync($"/snippets/{NewId()}", new SharedSnippetInput(" ", "select 1", null), Json)).StatusCode);
+
+        // Deleting the share takes its snippets along; the snippet's history stays in the share's audit trail.
+        var trail = (await jan.GetFromJsonAsync<AuditEntry[]>($"/shares/{shareId}/audit", Json))!;
+        Assert.Contains(trail, e => e.Action == "snippet-shared" && e.Detail == "Late orders");
+        await jan.DeleteAsync($"/shares/{shareId}");
+        var left = (await eva.GetFromJsonAsync<SharedSnippet[]>("/snippets", Json))!.Select(s => s.Id).ToList();
+        Assert.DoesNotContain(onShare, left);
+        Assert.Contains(forTeam, left);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await petr.DeleteAsync($"/snippets/{forTeam}")).StatusCode);
+    }
+
+    [Fact]
     public async Task Backup_writes_a_readable_copy()
     {
         var jan = await SignIn("Jan");

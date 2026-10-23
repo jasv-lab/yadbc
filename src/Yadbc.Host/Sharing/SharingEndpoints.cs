@@ -44,9 +44,10 @@ public static class SharingEndpoints
         });
 
         // Signing out also forgets the included logins cached here; the installed shares stay listed.
-        api.MapPost("/sign-out", async (Broker broker, ConnectionStore store, SecretStore secrets, DataSourceCache cache, CancellationToken ct) =>
+        api.MapPost("/sign-out", async (Broker broker, ConnectionStore store, SecretStore secrets, DataSourceCache cache, TeamAiSettings teamAi, CancellationToken ct) =>
         {
             await broker.SignOutAsync(ct);
+            teamAi.Forget();
             foreach (var p in store.All().Where(p => p.Shared is { LoginMode: LoginMode.Included }))
             {
                 secrets.Delete(p.Id);
@@ -55,8 +56,13 @@ public static class SharingEndpoints
             return Results.NoContent();
         });
 
-        api.MapPost("/sync", (Broker broker, ConnectionStore store, SecretStore secrets, DataSourceCache cache, SharedLogins logins, CancellationToken ct) =>
-            TryAsync(async () => Results.Ok(new { changed = await SyncAsync(broker, store, secrets, cache, logins, ct) })));
+        api.MapPost("/sync", (Broker broker, ConnectionStore store, SecretStore secrets, DataSourceCache cache, SharedLogins logins,
+            TeamAiSettings teamAi, SharedSnippets snippets, CancellationToken ct) => TryAsync(async () =>
+            {
+                var changed = await SyncAsync(broker, store, secrets, cache, logins, ct);
+                await teamAi.RefreshAsync(ct);
+                return Results.Ok(new { changed, snippets = await snippets.RefreshAsync(ct) });
+            }));
 
         api.MapGet("/catalog", (Broker broker, ConnectionStore store, CancellationToken ct) => TryAsync(async () =>
         {
@@ -256,7 +262,7 @@ public static class SharingEndpoints
         }
     }
 
-    static async Task<IResult> TryAsync(Func<Task<IResult>> action)
+    internal static async Task<IResult> TryAsync(Func<Task<IResult>> action)
     {
         try
         {

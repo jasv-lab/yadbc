@@ -1,16 +1,18 @@
 import { Dialog } from '@angular/cdk/dialog'
 import { CdkContextMenuTrigger, CdkMenu, CdkMenuItem } from '@angular/cdk/menu'
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core'
+import { Observable } from 'rxjs'
 import { Commands } from '../core/commands'
 import { ConnectionProfile } from '../core/protocol'
+import { initials, Sharing, sharingError } from '../sharing/sharing'
 import { Icon } from '../ui/icon'
 import { Workspace } from '../workspace/workspace'
 import { SnippetDialog, SnippetDialogData } from './snippet-dialog'
 import { Snippet, Snippets } from './snippets'
 
 /**
- * Sidebar snippets for the active connection (its own and the global ones). Enter / click inserts into
- * the editor (appended, like history); double-click opens a new tab.
+ * Sidebar snippets for the active connection (its own and the global ones), yours and the team's shared
+ * ones. Enter / click inserts into the editor (appended, like history); double-click opens a new tab.
  */
 @Component({
   selector: 'y-snippet-list',
@@ -42,6 +44,15 @@ import { Snippet, Snippets } from './snippets'
       </button>
     </div>
 
+    @if (error()) {
+      <p class="flex items-start gap-1 px-3 pb-1.5 text-[12px] text-danger">
+        <span class="flex-1">{{ error() }}</span>
+        <button class="text-faint hover:text-fg" title="Dismiss" (click)="error.set('')">
+          <y-icon name="x" [size]="12" />
+        </button>
+      </p>
+    }
+
     <div
       #list
       class="min-h-0 flex-1 overflow-y-auto outline-none"
@@ -66,6 +77,9 @@ import { Snippet, Snippets } from './snippets'
             @if (s.connectionId === null) {
               <span class="badge" title="Offered on every connection">all</span>
             }
+            @if (s.shared; as shared) {
+              <span class="badge shared" [title]="'Shared by ' + shared.by">{{ initials(shared.by) }}</span>
+            }
           </div>
           <div class="sql">{{ s.sql }}</div>
         </div>
@@ -89,10 +103,50 @@ import { Snippet, Snippets } from './snippets'
         <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="openInNewTab(snippet)">
           Open in new tab <span class="menu-key">Double-click</span>
         </button>
-        <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="edit(snippet)">Rename or move…</button>
+        @if (!snippet.shared || snippet.shared.canEdit) {
+          <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="edit(snippet)">
+            Rename or move…
+          </button>
+        }
         <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="copy(snippet)">Copy SQL</button>
-        <div class="menu-sep"></div>
-        <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="remove(snippet)">Delete snippet</button>
+        @if (!snippet.shared && signedIn()) {
+          <div class="menu-sep"></div>
+          @if (shareable(snippet)) {
+            <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="share(snippet)">
+              Share
+              {{
+                snippet.connectionId === null ? 'with the team' : 'with everyone using ' + connection().name
+              }}
+            </button>
+          } @else {
+            <button
+              cdkMenuItem
+              class="menu-item"
+              disabled
+              title="Share the connection first, or offer the snippet on every connection"
+            >
+              Share (the connection isn’t shared)
+            </button>
+          }
+        }
+        @if (snippet.shared?.canEdit) {
+          <div class="menu-sep"></div>
+          <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="stopSharing(snippet)">
+            Stop sharing (keep it as mine)
+          </button>
+        }
+        @if (snippet.shared && !snippet.shared.canEdit) {
+          <div class="menu-sep"></div>
+          <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="copyToMine(snippet)">
+            Copy to my snippets
+          </button>
+        }
+        @if (!snippet.shared || snippet.shared.canEdit) {
+          <div class="menu-sep"></div>
+          <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="remove(snippet)">
+            Delete snippet{{ snippet.shared ? ' for everyone' : '' }}
+          </button>
+        }
       </div>
     </ng-template>
   `,
@@ -126,6 +180,10 @@ import { Snippet, Snippets } from './snippets'
       color: var(--fg-muted);
       font-size: 10.5px;
     }
+    .badge.shared {
+      background: var(--bg-selected);
+      color: var(--accent);
+    }
   `,
 })
 export class SnippetList {
@@ -134,7 +192,11 @@ export class SnippetList {
   private readonly snippets = inject(Snippets)
   private readonly workspace = inject(Workspace)
   private readonly dialog = inject(Dialog)
+  private readonly sharing = inject(Sharing)
   protected readonly commands = inject(Commands)
+  protected readonly initials = initials
+  protected readonly signedIn = computed(() => this.sharing.status().signedIn)
+  protected readonly error = signal('')
 
   protected readonly search = signal('')
   protected readonly selected = signal<string | null>(null)
@@ -160,7 +222,7 @@ export class SnippetList {
       e.preventDefault()
       if (e.altKey) this.openInNewTab(s)
       else this.insert(s)
-    } else if (e.key === 'Delete' && s) {
+    } else if (e.key === 'Delete' && s && (!s.shared || s.shared.canEdit)) {
       e.preventDefault()
       this.remove(s)
     }
@@ -187,6 +249,29 @@ export class SnippetList {
   }
 
   protected remove(s: Snippet) {
-    this.snippets.remove(s.id).subscribe()
+    this.run(this.snippets.remove(s.id))
+  }
+
+  /** A shared snippet sits on a shared connection or on every connection, never on one only this machine has. */
+  protected shareable(s: Snippet): boolean {
+    const shared = this.connection().shared
+    return s.connectionId === null || (!!shared && !shared.orphaned)
+  }
+
+  protected share(s: Snippet) {
+    this.run(this.snippets.share(s.id))
+  }
+
+  protected stopSharing(s: Snippet) {
+    this.run(this.snippets.stopSharing(s.id))
+  }
+
+  protected copyToMine(s: Snippet) {
+    this.run(this.snippets.save({ name: s.name, sql: s.sql, connectionId: s.connectionId }))
+  }
+
+  private run(call: Observable<unknown>) {
+    this.error.set('')
+    call.subscribe({ error: (e) => this.error.set(sharingError(e)) })
   }
 }

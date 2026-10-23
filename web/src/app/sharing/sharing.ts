@@ -18,6 +18,7 @@ import {
 } from 'rxjs'
 import { Connections } from '../connections/connections'
 import { ConnectionEnv, ConnectionProfile, LoginMode } from '../core/protocol'
+import { Snippets } from '../snippets/snippets'
 
 export interface Person {
   id: string
@@ -98,6 +99,7 @@ export function sharingError(e: unknown): string {
 export class Sharing {
   private readonly http = inject(HttpClient)
   private readonly connections = inject(Connections)
+  private readonly snippets = inject(Snippets)
   private readonly sync$ = new Subject<void>()
 
   readonly status = signal<SharingStatus>(NONE)
@@ -125,8 +127,13 @@ export class Sharing {
   }
 
   private syncNow() {
-    return this.http.post<{ changed: number }>('/api/sharing/sync', {}).pipe(
-      switchMap((r) => (r.changed ? this.connections.reload() : of(null))),
+    return this.http.post<{ changed: number; snippets: boolean }>('/api/sharing/sync', {}).pipe(
+      switchMap((r) =>
+        merge(
+          r.changed ? this.connections.reload() : of(null),
+          r.snippets ? this.snippets.reload() : of(null),
+        ),
+      ),
       catchError((e) => {
         if (e instanceof HttpErrorResponse && e.error?.signedOut) this.refreshStatus().subscribe()
         return of(null)
@@ -167,7 +174,7 @@ export class Sharing {
     return this.http.get<Person[]>('/api/sharing/users').pipe(catchError(() => of([])))
   }
 
-  /** Into one of your groups (or none); the group is yours, not the share's. */
+  /** Into one of your groups (or none); the group is yours, not the share's. Brings its shared snippets along. */
   install(shareId: string, group: string | null): Observable<ConnectionProfile> {
     return this.http
       .post<ConnectionProfile>(`/api/sharing/install/${shareId}`, {}, { params: group ? { group } : {} })
@@ -189,9 +196,13 @@ export class Sharing {
       .pipe(this.reloading())
   }
 
+  /** Connections changed: and with them which shared snippets are offered where. */
   private reloading<T>() {
     return (source: Observable<T>) =>
-      source.pipe(switchMap((v) => this.connections.reload().pipe(map(() => v))))
+      source.pipe(
+        switchMap((v) => this.connections.reload().pipe(map(() => v))),
+        tap(() => this.snippets.reload().subscribe({ error: () => undefined })),
+      )
   }
 }
 

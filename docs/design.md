@@ -104,6 +104,7 @@ Source material: [ui-debate-verdict.md](ui-debate-verdict.md) (the UI/UX rulings
 - A data tab opened with parameters (history "Run in new tab") waits for Run instead of running unbound.
 - **Snippets:** saved, named statements in `snippets.json`, saved and deleted one at a time so two windows can't drop each other's. Each snippet is either for one connection or for every connection. Save the statement under the cursor with the Snippets tab's **+** or Ctrl+K → *Save statement as snippet…*; the dialog sets the name and scope.
 - The sidebar's **Snippets** tab (beside Schema and History) and Ctrl+P (its own section) list them. Enter/click appends to the editor, double-click opens a new tab, and the context menu has rename or move, copy and delete. A snippet with `:params` is the reusable query: insert, run, fill in.
+- **Shared snippets** (signed in to the broker, §10b): share one from its context menu or with the save dialog's *Share* box. It's marked with the sharer's initials.
 
 ## 5. Results grid
 
@@ -224,6 +225,10 @@ Source material: [ui-debate-verdict.md](ui-debate-verdict.md) (the UI/UX rulings
 - Chat goes through the backend (the key never reaches the page) and streams back as server-sent events: content and a thinking model's `reasoning_content` separately — reasoning shows as "Thinking…", then folds away.
 - **Context**, built per question: the statement under the cursor (or the selection), its tab's last error (message, SQLSTATE, detail, hint), its plan as compact one-line-per-node text (EXPLAIN JSON would eat a 16k context), and the schema in three tiers within ~24k characters: full detail (columns, types, PK, NOT NULL, FK targets) for the tables the statement or the conversation is about and their FK neighbours both ways; column names for as many other tables as fit; bare names past that. Tables are matched the way people write them — exact, without underscores ("antiaffinities", "virtual machines"), singular, or by initials ("vms"). A small schema goes in whole. Extension-owned objects are left out. **Never result rows.** Each part shows as a chip and can be switched off.
 - Quick actions follow the context: explain / fix an error, explain the plan, make it faster, explain the query, write a query.
+- **Team settings:** an admin (the broker's `yadbc.admin` role) can share their endpoint, model and max tokens, with the API key or without. After signing in to the broker, anyone without an endpoint of their own uses the team's: with their own key if they set one, else the shared key.
+  - The shared key is fetched once (audited on the broker) and cached in Credential Manager. A changed or keyless team setting drops the cached copy.
+  - Your own endpoint overrides the team setting entirely.
+  - The team setting refreshes with the sharing sync and disappears on sign-out.
 - Answers render from a small Markdown parser into data (no HTML from the model). SQL blocks get Copy, Insert (under your SQL, selected) and Replace (in place of the statement asked about, if it's still there as it was). Nothing an answer contains runs by itself.
 
 ## 9c. Schema changes: compare, table definition, table editor
@@ -278,7 +283,7 @@ An optional extra: yadbc stays fully usable with local connections and no sign-i
 
 ### Broker
 - A small standalone service on a Kubernetes cluster, behind its Gateway or Ingress. Code lives in `src/Yadbc.Broker` (ASP.NET minimal API), with the request/response records shared with the app in `src/Yadbc.Contracts`. A Helm chart in `deploy/helm/yadbc-broker`, with a setup guide in `deploy/README.md`.
-- **SQLite** on a PVC, single replica, `strategy: Recreate`. Tables: users, devices, shares, installs, audit.
+- **SQLite** on a PVC, single replica, `strategy: Recreate`. Tables: users, devices, shares, installs, snippets, settings, audit.
   - Logins are encrypted with AES-GCM, with the key in a k8s Secret.
   - A nightly `VACUUM INTO` copy is the backup.
 - It never connects to a database: databases are reachable only from people's machines. It hands out connection details; the data path stays client → DB, tunnels included.
@@ -318,6 +323,18 @@ An optional extra: yadbc stays fully usable with local connections and no sign-i
 - **Sign-out** removes the broker token and the cached shared logins. Installed shares stay in the list and ask for sign-in.
 - **In the app:** an installed share is an ordinary profile with a `shared` link (share id, version, login mode, MCP ceiling, owners, can-edit, orphaned). Sync overwrites the shared fields and keeps the per-person ones. In the connection dialog the fields that come from the share are locked for non-owners. Owners' edits go to the broker with If-Match, and a conflict says who changed it and when. A share that switches to "own login" drops everyone's cached shared password. The sign-in callback (`/sharing/callback`) is the one UI-port path without the per-launch token: the system browser doesn't have it, so the state remembered at sign-in proves it's our own round trip.
 
+### Shared snippets
+- **Where they go:** a snippet on a shared connection travels with the share, so everyone who installed it gets it. A snippet for every connection goes to the whole team. One on a connection only you have can't be shared: share the connection first, or offer it on every connection.
+- **Sharing moves it:** like a connection, sharing uploads your snippet and your copy becomes the shared one. *Stop sharing* turns it back into yours.
+- **Who changes it:** its author, the share's owners and admins (rename or move, stop sharing, delete for everyone). Everyone else can *Copy to my snippets*.
+- **Saving:** last save wins, with no version check: it's one short text.
+- **Sync:** the list comes with the sharing sync (ETag) and is cached in `shared-snippets.json`, so it works offline. Deleting a share deletes its snippets.
+- **Audit:** sharing, changing and deleting are audited, in the share's trail when the snippet is on a share.
+
+### Team settings
+- One row per setting in the broker's `settings` table. Today there's one: the AI assistant (§9b).
+- Read by anyone signed in, changed by admins only. The key is write-only like a share login: encrypted with AES-GCM bound to `team:ai`, and every fetch audited.
+
 ### API
 - `GET /shares` (the catalog)
 - `GET/PUT/DELETE /shares/{id}`
@@ -328,9 +345,10 @@ An optional extra: yadbc stays fully usable with local connections and no sign-i
 - `GET /me`
 - `GET/DELETE /me/devices`
 - `GET /login`, `GET /auth/callback`, `POST /token`
+- `GET/PUT/DELETE /team/ai`, `GET /team/ai/key`
+- `GET /snippets`, `PUT/DELETE /snippets/{id}`
 
 ### Later
-- Shared snippets that travel with a share.
 - Limiting a share to provider groups, if "everyone sees everything" ever becomes a problem.
 
 ## 11. UI

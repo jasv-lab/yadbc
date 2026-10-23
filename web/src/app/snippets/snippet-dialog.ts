@@ -1,6 +1,8 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog'
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core'
+import { of, switchMap, tap } from 'rxjs'
 import { ConnectionProfile } from '../core/protocol'
+import { Sharing, sharingError } from '../sharing/sharing'
 import { Snippet, Snippets } from './snippets'
 
 export interface SnippetDialogData {
@@ -31,13 +33,36 @@ export interface SnippetDialogData {
         <span>Offered on</span>
         <label class="flex items-center gap-2 text-[12.5px]">
           <input type="radio" name="scope" [checked]="!global()" (change)="global.set(false)" />
-          {{ data.connection.name }} only
+          {{
+            data.existing?.shared ? 'Everyone using ' + data.connection.name : data.connection.name + ' only'
+          }}
         </label>
         <label class="flex items-center gap-2 text-[12.5px]">
           <input type="radio" name="scope" [checked]="global()" (change)="global.set(true)" />
-          Every connection
+          {{ data.existing?.shared ? 'Everyone on the team, on every connection' : 'Every connection' }}
         </label>
       </div>
+      @if (!data.existing && signedIn()) {
+        <label class="flex items-start gap-2 text-[12.5px]" [class.text-faint]="!shareable()">
+          <input
+            type="checkbox"
+            class="mt-0.5"
+            [checked]="share() && shareable()"
+            [disabled]="!shareable()"
+            (change)="share.set(!share())"
+          />
+          <span>
+            Share with
+            {{ global() ? 'the team' : 'everyone using ' + data.connection.name }}
+            @if (!shareable()) {
+              <span class="block text-[11.5px]"
+                >{{ data.connection.name }} isn’t shared: share the connection first, or offer the snippet on
+                every connection.</span
+              >
+            }
+          </span>
+        </label>
+      }
       <pre
         class="max-h-[160px] overflow-auto rounded border border-line bg-sunken p-2 font-mono text-[12px]"
         >{{ data.sql }}</pre>
@@ -95,9 +120,18 @@ export class SnippetDialog {
   protected readonly ref = inject<DialogRef<Snippet>>(DialogRef)
   protected readonly data = inject<SnippetDialogData>(DIALOG_DATA)
   private readonly snippets = inject(Snippets)
+  private readonly sharing = inject(Sharing)
+  protected readonly signedIn = computed(() => this.sharing.status().signedIn)
+  /** Saved but sharing it failed: Save again shares that one instead of saving a second copy. */
+  private savedId: string | undefined
 
   protected readonly name = signal(this.data.existing?.name ?? '')
   protected readonly global = signal(this.data.existing ? this.data.existing.connectionId === null : false)
+  protected readonly share = signal(false)
+  /** A shared snippet sits on a shared connection or on every connection. */
+  protected readonly shareable = computed(
+    () => this.global() || (!!this.data.connection.shared && !this.data.connection.shared.orphaned),
+  )
   protected readonly busy = signal(false)
   protected readonly error = signal('')
 
@@ -111,13 +145,17 @@ export class SnippetDialog {
           sql: this.data.sql,
           connectionId: this.global() ? null : (this.data.existing?.connectionId ?? this.data.connection.id),
         },
-        this.data.existing?.id,
+        this.data.existing?.id ?? this.savedId,
+      )
+      .pipe(
+        tap((s) => (this.savedId = s.id)),
+        switchMap((s) => (this.share() && this.shareable() ? this.snippets.share(s.id) : of(s))),
       )
       .subscribe({
         next: (s) => this.ref.close(s),
-        error: () => {
+        error: (e) => {
           this.busy.set(false)
-          this.error.set('Could not save the snippet')
+          this.error.set(sharingError(e))
         },
       })
   }

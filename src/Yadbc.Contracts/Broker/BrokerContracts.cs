@@ -81,3 +81,27 @@ public sealed record Device(
 public sealed record AuditEntry(DateTimeOffset At, PersonRef? User, string Action, string? Detail);
 
 public sealed record BrokerError(string Error);
+
+/// <summary>The team's AI assistant settings, shared by an admin; the key (if shared) is fetched separately.</summary>
+public sealed record TeamAi(string Endpoint, string Model, int MaxTokens, bool HasKey, PersonRef UpdatedBy, DateTimeOffset UpdatedAt);
+
+/// <summary>Key null or empty: shared without a key, each person uses their own.</summary>
+public sealed record TeamAiInput(string Endpoint, string Model, int MaxTokens, string? Key);
+
+public sealed record TeamAiKey(string Key);
+
+/// <summary>
+/// A statement shared with everyone who installed a share (<see cref="ShareId"/>), or with the whole
+/// team (null). Its author, the share's owners and admins can change or delete it.
+/// </summary>
+public sealed record SharedSnippet(
+    string Id,
+    string Name,
+    string Sql,
+    string? ShareId,
+    PersonRef Author,
+    PersonRef UpdatedBy,
+    DateTimeOffset UpdatedAt,
+    bool CanEdit);
+
+public sealed record SharedSnippetInput(string Name, string Sql, string? ShareId);

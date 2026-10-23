@@ -54,6 +54,8 @@ public static class Program
         builder.Services.AddSingleton<TunnelManager>();
         builder.Services.AddSingleton<Broker>();
         builder.Services.AddSingleton<SharedLogins>();
+        builder.Services.AddSingleton<TeamAiSettings>();
+        builder.Services.AddSingleton<SharedSnippets>();
         builder.Services.AddSingleton<DataSourceCache>();
         builder.Services.AddSingleton<QuerySocketHandler>();
         builder.Services.AddSingleton<ResultStore>();

@@ -59,6 +59,7 @@ public sealed class Broker(SecretStore secrets, ILogger<Broker> log)
     PendingSignIn? _pending;
     string? _catalogTag;
     List<Share> _catalog = [];
+    string? _snippetsTag;
 
     sealed record PendingSignIn(string Url, string State, string Verifier, string RedirectUri, DateTimeOffset Started);
 
@@ -166,6 +167,7 @@ public sealed class Broker(SecretStore secrets, ILogger<Broker> log)
                 _me = token.Me;
                 _error = null;
                 _catalogTag = null;
+                _snippetsTag = null;
             }
             SaveUrl(pending.Url);
             return null;
@@ -205,6 +207,7 @@ public sealed class Broker(SecretStore secrets, ILogger<Broker> log)
             _me = null;
             _catalogTag = null;
             _catalog = [];
+            _snippetsTag = null;
         }
     }
 
@@ -245,6 +248,45 @@ public sealed class Broker(SecretStore secrets, ILogger<Broker> log)
     public Task UninstallAsync(string id, CancellationToken ct) => SendAsync(HttpMethod.Delete, $"/me/installs/{id}", null, null, ct);
 
     public Task<List<PersonRef>> UsersAsync(CancellationToken ct) => SendAsync<List<PersonRef>>(HttpMethod.Get, "/users", null, null, ct);
+
+    public bool IsAdmin => SignedIn && _me?.IsAdmin == true;
+
+    /// <summary>The team's AI settings; null when none are shared (or the broker predates them).</summary>
+    public async Task<TeamAi?> TeamAiAsync(CancellationToken ct)
+    {
+        using var request = Request(HttpMethod.Get, "/team/ai", null);
+        using var response = await Send(request, ct);
+        if (response.StatusCode is HttpStatusCode.NoContent or HttpStatusCode.NotFound) return null;
+        await EnsureOk(response, ct);
+        return await response.Content.ReadFromJsonAsync<TeamAi>(Json, ct);
+    }
+
+    public Task<TeamAi> ShareTeamAiAsync(TeamAiInput input, CancellationToken ct) =>
+        SendAsync<TeamAi>(HttpMethod.Put, "/team/ai", input, null, ct);
+
+    public Task StopTeamAiAsync(CancellationToken ct) => SendAsync(HttpMethod.Delete, "/team/ai", null, null, ct);
+
+    public async Task<string> TeamAiKeyAsync(CancellationToken ct) =>
+        (await SendAsync<TeamAiKey>(HttpMethod.Get, "/team/ai/key", null, null, ct)).Key;
+
+    /// <summary>The shared snippets, or null when they haven't changed since the last call (304).</summary>
+    public async Task<List<SharedSnippet>?> SnippetsAsync(CancellationToken ct)
+    {
+        using var request = Request(HttpMethod.Get, "/snippets", null);
+        if (_snippetsTag is not null) request.Headers.TryAddWithoutValidation("If-None-Match", _snippetsTag);
+        using var response = await Send(request, ct);
+        if (response.StatusCode == HttpStatusCode.NotModified) return null;
+        if (response.StatusCode == HttpStatusCode.NotFound) return []; // a broker from before shared snippets
+        await EnsureOk(response, ct);
+        var list = (await response.Content.ReadFromJsonAsync<List<SharedSnippet>>(Json, ct))!;
+        _snippetsTag = response.Headers.ETag?.Tag;
+        return list;
+    }
+
+    public Task<SharedSnippet> PutSnippetAsync(string id, SharedSnippetInput input, CancellationToken ct) =>
+        SendAsync<SharedSnippet>(HttpMethod.Put, $"/snippets/{id}", input, null, ct);
+
+    public Task DeleteSnippetAsync(string id, CancellationToken ct) => SendAsync(HttpMethod.Delete, $"/snippets/{id}", null, null, ct);
 
     async Task<T> SendAsync<T>(HttpMethod method, string path, object? body, string? ifMatch, CancellationToken ct)
     {
