@@ -51,12 +51,17 @@ resources:
 # Expose it either through a Gateway API HTTPRoute…
 httpRoute:
   enabled: false
-  # parentRefs:
-  #   - name: my-gateway
-  #     namespace: gateway-system
-  #     sectionName: https
+  # One hostname on one Gateway listener (this is what the Rancher form sets)…
+  hostname: "" # yadbc.example.com
+  gateway:
+    name: ""
+    namespace: ""
+    sectionName: "" # the listener; set it, or the route attaches to every listener of the Gateway
+  # …or the full lists, which win when set:
+  # parentRefs: [{ name: my-gateway, namespace: gateway-system, sectionName: https }]
+  # hostnames: [yadbc.example.com]
   parentRefs: []
-  hostnames: [] # [yadbc.example.com]
+  hostnames: []
 
 # …or a classic Ingress. TLS terminates in front of the broker; it trusts X-Forwarded-Proto.
 ingress:

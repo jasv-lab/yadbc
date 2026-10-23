@@ -1,12 +1,29 @@
 {{- if .Values.httpRoute.enabled }}
+{{- /* One hostname and one Gateway listener (what the Rancher form sets), or the full lists. An empty
+       list would render a route without hostnames, which then takes every hostname of the Gateway. */}}
+{{- $hostnames := .Values.httpRoute.hostnames | default (compact (list .Values.httpRoute.hostname)) }}
+{{- if not $hostnames }}
+{{- fail "httpRoute is enabled but has no hostname: set httpRoute.hostname (or httpRoute.hostnames)" }}
+{{- end }}
+{{- $parentRefs := .Values.httpRoute.parentRefs }}
+{{- if not $parentRefs }}
+{{- $g := .Values.httpRoute.gateway }}
+{{- if not $g.name }}
+{{- fail "httpRoute is enabled but has no Gateway: set httpRoute.gateway.name (or httpRoute.parentRefs)" }}
+{{- end }}
+{{- $ref := dict "name" $g.name }}
+{{- if $g.namespace }}{{ $_ := set $ref "namespace" $g.namespace }}{{ end }}
+{{- if $g.sectionName }}{{ $_ := set $ref "sectionName" $g.sectionName }}{{ end }}
+{{- $parentRefs = list $ref }}
+{{- end }}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: {{ include "yadbc-broker.name" . }}
   labels: {{- include "yadbc-broker.labels" . | nindent 4 }}
 spec:
-  parentRefs: {{- required "httpRoute.parentRefs is required" .Values.httpRoute.parentRefs | toYaml | nindent 4 }}
-  hostnames: {{- required "httpRoute.hostnames is required" .Values.httpRoute.hostnames | toYaml | nindent 4 }}
+  parentRefs: {{- toYaml $parentRefs | nindent 4 }}
+  hostnames: {{- toYaml $hostnames | nindent 4 }}
   rules:
     - matches:
         - path:

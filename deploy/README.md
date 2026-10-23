@@ -62,10 +62,11 @@ oidc:
 existingSecret: yadbc-broker   # or leave it out and pass oidc.clientSecret: the chart creates the Secret
 httpRoute:                     # or ingress: { enabled: true, host: …, tlsSecretName: … }
   enabled: true
-  parentRefs:
-    - name: <gateway>
-      namespace: <gateway namespace>
-  hostnames: [yadbc.example.com]
+  hostname: yadbc.example.com
+  gateway:
+    name: <gateway>
+    namespace: <gateway namespace>
+    sectionName: <its listener for this hostname>
 ```
 
 ```bash

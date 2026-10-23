@@ -35,17 +35,20 @@ questions:
     group: Exposure
     show_subquestion_if: true
     subquestions:
-      - variable: httpRoute.hostnames[0]
+      - variable: httpRoute.hostname
         label: Hostname
         type: string
-      - variable: httpRoute.parentRefs[0].name
+        required: true
+      - variable: httpRoute.gateway.name
         label: Gateway name
         type: string
-      - variable: httpRoute.parentRefs[0].namespace
+        required: true
+      - variable: httpRoute.gateway.namespace
         label: Gateway namespace
         type: string
-      - variable: httpRoute.parentRefs[0].sectionName
+      - variable: httpRoute.gateway.sectionName
         label: Listener (sectionName)
+        description: The Gateway listener for this hostname. Leave empty only if the Gateway has no other listeners.
         type: string
   - variable: ingress.enabled
     label: Expose through an Ingress
