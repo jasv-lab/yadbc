@@ -62,6 +62,9 @@ httpRoute:
   # hostnames: [yadbc.example.com]
   parentRefs: []
   hostnames: []
+  # Envoy Gateway only: allow just these networks (comma-separated CIDRs) through a SecurityPolicy,
+  # e.g. the office and VPN when the route is on a public Gateway. Empty = no allow-list.
+  allowedCIDRs: "" # 203.0.113.0/24, 198.51.100.7/32
 
 # …or a classic Ingress. TLS terminates in front of the broker; it trusts X-Forwarded-Proto.
 ingress:

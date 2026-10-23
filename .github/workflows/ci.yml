@@ -81,6 +81,14 @@ jobs:
             --set httpRoute.gateway.namespace=gw --set httpRoute.gateway.sectionName=https-yadbc)
           echo "$out" | grep -q "yadbc.example.com"
           echo "$out" | grep -q "sectionName: https-yadbc"
+          if echo "$out" | grep -q "kind: SecurityPolicy"; then echo "an allow-list without allowedCIDRs"; exit 1; fi
+          # The form's allow-list: comma- (or space-) separated CIDRs → one Envoy Gateway SecurityPolicy.
+          out=$(helm template yadbc-broker deploy/helm/yadbc-broker -n yadbc $common --set httpRoute.enabled=true \
+            --set httpRoute.hostname=yadbc.example.com --set httpRoute.gateway.name=eg \
+            --set-string 'httpRoute.allowedCIDRs=203.0.113.0/24\, 198.51.100.7/32')
+          echo "$out" | grep -q "kind: SecurityPolicy"
+          echo "$out" | grep -q -- "- 203.0.113.0/24"
+          echo "$out" | grep -q -- "- 198.51.100.7/32"
           if helm template yadbc-broker deploy/helm/yadbc-broker $common --set httpRoute.enabled=true --set httpRoute.gateway.name=eg > /dev/null 2>&1; then
             echo "an HTTPRoute without a hostname should not render"; exit 1
           fi

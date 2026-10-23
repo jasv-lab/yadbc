@@ -67,6 +67,7 @@ httpRoute:                     # or ingress: { enabled: true, host: …, tlsSecr
     name: <gateway>
     namespace: <gateway namespace>
     sectionName: <its listener for this hostname>
+  allowedCIDRs: 203.0.113.0/24, 198.51.100.7/32   # optional, Envoy Gateway: only these networks get in
 ```
 
 ```bash

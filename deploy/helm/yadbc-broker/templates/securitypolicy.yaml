@@ -1,0 +1,23 @@
+{{- if and .Values.httpRoute.enabled .Values.httpRoute.allowedCIDRs }}
+{{- /* Envoy Gateway only: an IP allow-list for the route, e.g. office/VPN networks when it sits on a
+       public Gateway. One comma- or space-separated string, so the Rancher form can set it. The Gateway
+       must see the real client address (PROXY protocol or trusted X-Forwarded-For), or nothing matches. */}}
+{{- $cidrs := splitList "," (.Values.httpRoute.allowedCIDRs | replace " " ",") | compact }}
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ include "yadbc-broker.name" . }}-ip-allowlist
+  labels: {{- include "yadbc-broker.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ include "yadbc-broker.name" . }}
+  authorization:
+    defaultAction: Deny
+    rules:
+      - name: allowed-networks
+        action: Allow
+        principal:
+          clientCIDRs: {{- toYaml $cidrs | nindent 12 }}
+{{- end }}

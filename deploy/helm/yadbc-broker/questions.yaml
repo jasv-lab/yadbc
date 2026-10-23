@@ -50,6 +50,10 @@ questions:
         label: Listener (sectionName)
         description: The Gateway listener for this hostname. Leave empty only if the Gateway has no other listeners.
         type: string
+      - variable: httpRoute.allowedCIDRs
+        label: Allowed networks (Envoy Gateway)
+        description: Comma-separated CIDRs allowed to reach the broker, e.g. office and VPN on a public Gateway. Creates an Envoy Gateway SecurityPolicy. Empty = no allow-list.
+        type: string
   - variable: ingress.enabled
     label: Expose through an Ingress
     type: boolean
