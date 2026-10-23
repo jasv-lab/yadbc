@@ -24,42 +24,43 @@ A confidential client with the same redirect URI and scopes `openid profile emai
 - `oidc.adminClaim` / `oidc.adminValue`: where admin comes from (e.g. `groups` / `yadbc-admins`)
 - `oidc.useUserInfo: true` if names and emails aren't in the ID token
 
-## 2. Image
+## 2. Image and chart
 
-CI (`.github/workflows/broker-image.yml`) publishes it to `ghcr.io/<owner>/yadbc-broker`: `:main` and
-`:sha-<commit>` from the main branch, and `:1.2.3` from a `broker-v1.2.3` tag. Pin a version tag in your
-values. While the package is private, the cluster needs a pull secret for ghcr.io (`imagePullSecrets`).
+Tagging `broker-v1.2.3` makes CI (`.github/workflows/broker-image.yml`) publish both:
+- the image `ghcr.io/<owner>/yadbc-broker:1.2.3` (main also gets `:main` and `:sha-<commit>`);
+- the chart `oci://ghcr.io/<owner>/charts/yadbc-broker`, version 1.2.3, already pointing at that image.
 
-To build it yourself, run this from the repository root:
+GitHub packages start private. To install without credentials, make both public once (the package's
+settings on GitHub → Change visibility), even if the repository itself stays private.
+
+To build the image yourself, run this from the repository root:
 
 ```bash
 docker build -f src/Yadbc.Broker/Dockerfile -t <registry>/yadbc-broker:0.1.0 .
-```
-
-```bash
-docker push <registry>/yadbc-broker:0.1.0
 ```
 
 The image is chiseled .NET: non-root (uid 1654), no shell, and it runs with a read-only root filesystem.
 
 ## 3. Install
 
-The broker's Secret holds the key that encrypts stored logins, plus the OIDC client secret. Create it in
-the cluster; it never goes into values or git:
+### From Rancher's Apps catalog
+1. **Apps → Repositories → Create:** target *OCI repository*, URL `oci://ghcr.io/<owner>/charts`. This
+   needs Rancher 2.9 or newer; older versions only take HTTP(S) and Git chart repositories.
+2. **Apps → Charts → yadbc broker → Install** into a namespace such as `yadbc`. The form asks for the
+   issuer URL, client id and client secret, then how it's exposed (Gateway HTTPRoute or Ingress) and the
+   storage class.
+3. **Secrets:** with *Existing Secret* left empty, the chart creates one. It generates the login key on the
+   first install, reads it back on every upgrade, and keeps the Secret on uninstall.
 
-```bash
-kubectl -n yadbc create secret generic yadbc-broker --from-literal=Broker__LoginKey="$(openssl rand -base64 32)" --from-literal=Broker__Oidc__ClientSecret='<client secret>'
-```
-
+### With Helm
 A values file for your cluster (the full list is in `helm/yadbc-broker/values.yaml`):
 
 ```yaml
-image:
-  repository: <registry>/yadbc-broker
 oidc:
   authority: https://login.microsoftonline.com/<tenant-id>/v2.0
   clientId: <application-client-id>
-httpRoute:            # or ingress: { enabled: true, host: …, tlsSecretName: … }
+existingSecret: yadbc-broker   # or leave it out and pass oidc.clientSecret: the chart creates the Secret
+httpRoute:                     # or ingress: { enabled: true, host: …, tlsSecretName: … }
   enabled: true
   parentRefs:
     - name: <gateway>
@@ -68,10 +69,18 @@ httpRoute:            # or ingress: { enabled: true, host: …, tlsSecretName: �
 ```
 
 ```bash
-helm upgrade --install yadbc-broker deploy/helm/yadbc-broker -n yadbc -f my-values.yaml
+helm upgrade --install yadbc-broker oci://ghcr.io/<owner>/charts/yadbc-broker --version 0.1.0 -n yadbc --create-namespace -f my-values.yaml
 ```
 
-Or render it for GitOps (Argo CD, Flux): `helm template yadbc-broker deploy/helm/yadbc-broker -n yadbc -f my-values.yaml`.
+From a checkout, use `deploy/helm/yadbc-broker` instead and set `image.repository`.
+
+### GitOps (Argo CD, Flux)
+`helm template` can't read the cluster, so a key generated at render time would change on every sync,
+and stored logins would become unreadable. Create the Secret yourself and name it in `existingSecret`:
+
+```bash
+kubectl -n yadbc create secret generic yadbc-broker --from-literal=Broker__LoginKey="$(openssl rand -base64 32)" --from-literal=Broker__Oidc__ClientSecret='<client secret>'
+```
 
 Check `https://<your host>/healthz`; it should answer `"ok"`. Then in yadbc: **Shared connections…** →
 `https://<your host>` → **Sign in**.

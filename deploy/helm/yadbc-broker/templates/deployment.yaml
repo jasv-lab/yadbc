@@ -23,7 +23,7 @@ spec:
         fsGroup: 1654
       containers:
         - name: broker
-          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ required "image.repository is required" .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: Broker__Oidc__Authority
@@ -50,7 +50,7 @@ spec:
               value: {{ .Values.backupKeepDays | quote }}
           envFrom:
             - secretRef:
-                name: {{ required "existingSecret is required" .Values.existingSecret }}
+                name: {{ .Values.existingSecret | default (printf "%s-secrets" (include "yadbc-broker.name" .)) }}
           ports:
             - name: http
               containerPort: 8080

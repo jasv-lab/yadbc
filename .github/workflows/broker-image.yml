@@ -3,7 +3,7 @@ name: Broker image
 # Builds the shared-connections broker image (src/Yadbc.Broker/Dockerfile) and pushes it to
 # ghcr.io/<owner>/yadbc-broker:
 #   main            → :main and :sha-<short sha>
-#   tag broker-v1.2.3 → :1.2.3
+#   tag broker-v1.2.3 → :1.2.3, and the Helm chart 1.2.3 to oci://ghcr.io/<owner>/charts/yadbc-broker
 # Pull requests build it without pushing.
 
 on:
@@ -62,3 +62,24 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  chart:
+    name: Publish the Helm chart
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/broker-v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Package
+        run: |
+          version="${GITHUB_REF_NAME#broker-v}"
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          # The published chart points at the image published with it (same version).
+          sed -i "s|^  repository: \"\"|  repository: ghcr.io/${owner}/yadbc-broker|" deploy/helm/yadbc-broker/values.yaml
+          grep -q "repository: ghcr.io/${owner}/yadbc-broker" deploy/helm/yadbc-broker/values.yaml
+          helm package deploy/helm/yadbc-broker --version "$version" --app-version "$version" -d dist
+      - name: Push
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+          helm push dist/yadbc-broker-*.tgz "oci://ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/charts"

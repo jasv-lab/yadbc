@@ -1,0 +1,75 @@
+# The form Rancher shows when installing from its Apps catalog.
+questions:
+  - variable: oidc.authority
+    label: Identity provider (issuer URL)
+    description: "Entra ID: https://login.microsoftonline.com/<tenant-id>/v2.0 — or any OIDC issuer"
+    type: string
+    required: true
+    group: Sign-in
+  - variable: oidc.clientId
+    label: Client id
+    description: The app registration's application (client) id
+    type: string
+    required: true
+    group: Sign-in
+  - variable: oidc.clientSecret
+    label: Client secret
+    description: Stored in a Secret the chart creates (leave empty if you name an existing Secret below)
+    type: password
+    group: Sign-in
+  - variable: oidc.adminValue
+    label: Admin app role
+    description: The value in the roles claim that lets someone edit or delete any share
+    type: string
+    default: yadbc.admin
+    group: Sign-in
+  - variable: existingSecret
+    label: Existing Secret (optional)
+    description: A Secret with Broker__LoginKey and Broker__Oidc__ClientSecret. Empty = the chart creates one and generates the login key.
+    type: string
+    group: Secrets
+  - variable: httpRoute.enabled
+    label: Expose through a Gateway (HTTPRoute)
+    type: boolean
+    default: false
+    group: Exposure
+    show_subquestion_if: true
+    subquestions:
+      - variable: httpRoute.hostnames[0]
+        label: Hostname
+        type: string
+      - variable: httpRoute.parentRefs[0].name
+        label: Gateway name
+        type: string
+      - variable: httpRoute.parentRefs[0].namespace
+        label: Gateway namespace
+        type: string
+      - variable: httpRoute.parentRefs[0].sectionName
+        label: Listener (sectionName)
+        type: string
+  - variable: ingress.enabled
+    label: Expose through an Ingress
+    type: boolean
+    default: false
+    group: Exposure
+    show_subquestion_if: true
+    subquestions:
+      - variable: ingress.host
+        label: Hostname
+        type: string
+      - variable: ingress.className
+        label: Ingress class
+        type: string
+      - variable: ingress.tlsSecretName
+        label: TLS Secret
+        type: string
+  - variable: persistence.storageClass
+    label: Storage class
+    description: Empty = the cluster default. NFS works (SQLite runs single-process, exclusive locking).
+    type: storageclass
+    group: Storage
+  - variable: persistence.size
+    label: Volume size
+    type: string
+    default: 1Gi
+    group: Storage

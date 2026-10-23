@@ -4,3 +4,7 @@ description: yadbc's shared-connections broker — a team catalog of database co
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
+kubeVersion: ">=1.25.0-0"
+annotations:
+  catalog.cattle.io/display-name: yadbc broker
+  catalog.cattle.io/release-name: yadbc-broker

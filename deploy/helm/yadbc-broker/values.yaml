@@ -1,10 +1,10 @@
 # yadbc shared-connections broker. See docs/design.md §10b and deploy/README.md.
-# Secrets never go in here: they come from an existing Secret (existingSecret below).
 
 image:
-  # Build it with src/Yadbc.Broker/Dockerfile and push it to a registry your cluster can pull from.
-  repository: "" # required, e.g. ghcr.io/you/yadbc-broker
-  tag: "0.1.0"
+  # The published chart points at the image published with it (ghcr.io/<owner>/yadbc-broker);
+  # from a checkout, set it to wherever you pushed src/Yadbc.Broker/Dockerfile's image.
+  repository: ""
+  tag: "" # default: the chart's appVersion
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -13,6 +13,8 @@ oidc:
   # Issuer URL: https://login.microsoftonline.com/<tenant-id>/v2.0, a Keycloak realm, any OIDC provider.
   authority: "" # required
   clientId: "" # required
+  # Only used when the chart creates the Secret (existingSecret empty).
+  clientSecret: ""
   scopes: [profile, email]
   # Providers that keep names and emails out of the ID token need the userinfo call.
   useUserInfo: false
@@ -22,10 +24,13 @@ oidc:
   adminClaim: roles
   adminValue: yadbc.admin
 
-# A Secret in the release namespace with two keys:
-#   Broker__LoginKey            openssl rand -base64 32 — encrypts stored logins; keep a copy
+# The broker's two secrets:
+#   Broker__LoginKey            encrypts the stored logins — lose it and owners re-enter them
 #   Broker__Oidc__ClientSecret  the OIDC client secret
-existingSecret: yadbc-broker
+# Either name a Secret you created (preferred for GitOps: `helm template` can't keep a generated key),
+# or leave this empty and the chart creates one: the login key is generated on first install and
+# kept on upgrades and on uninstall; the client secret comes from oidc.clientSecret.
+existingSecret: ""
 
 deviceTokenDays: 90
 backupKeepDays: 7

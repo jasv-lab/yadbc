@@ -56,15 +56,23 @@ jobs:
           --set image.repository=ghcr.io/example/yadbc-broker
           --set oidc.authority=https://login.example.com
           --set oidc.clientId=yadbc
+          --set oidc.clientSecret=secret
       - name: Render with an HTTPRoute and with an Ingress
         run: |
-          common="--set image.repository=ghcr.io/example/yadbc-broker --set oidc.authority=https://login.example.com --set oidc.clientId=yadbc"
+          common="--set image.repository=ghcr.io/example/yadbc-broker --set oidc.authority=https://login.example.com --set oidc.clientId=yadbc --set oidc.clientSecret=secret"
           helm template yadbc-broker deploy/helm/yadbc-broker -n yadbc $common \
             --set httpRoute.enabled=true \
             --set 'httpRoute.parentRefs[0].name=gateway' \
             --set 'httpRoute.hostnames[0]=yadbc.example.com' > /dev/null
           helm template yadbc-broker deploy/helm/yadbc-broker -n yadbc $common \
             --set ingress.enabled=true --set ingress.host=yadbc.example.com --set ingress.tlsSecretName=yadbc-tls > /dev/null
+          # With an existing Secret the chart creates none and doesn't need the client secret.
+          out=$(helm template yadbc-broker deploy/helm/yadbc-broker -n yadbc \
+            --set image.repository=ghcr.io/example/yadbc-broker \
+            --set oidc.authority=https://login.example.com --set oidc.clientId=yadbc --set existingSecret=mine)
+          echo "$out" | grep -q "name: mine"
+          # (an `if`, not `! grep`: bash -e ignores a negated command's failure)
+          if echo "$out" | grep -q "kind: Secret"; then echo "created a Secret despite existingSecret"; exit 1; fi
       - name: Required values are enforced
         run: |
           if helm template yadbc-broker deploy/helm/yadbc-broker > /dev/null 2>&1; then
