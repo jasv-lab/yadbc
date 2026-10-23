@@ -16,11 +16,25 @@ src/Yadbc.Broker/ shared-connections broker (optional, k8s) — deploy/README.md
 src/Yadbc.Contracts/ broker wire format, shared with the host
 tests/            broker tests: dotnet test yadbc.slnx
 deploy/           Helm chart and setup guide for the broker
-dev/              throwaway Postgres for development (docker compose)
+dev/              throwaway Postgres for development (docker compose), the Windows installer script
 docs/             design docs
 ```
 
-## Run it
+## Install
+
+`yadbc-win-Setup.exe` from a release. It installs per user into `%LocalAppData%\yadbc` (no admin), adds Start
+menu and desktop shortcuts and an entry in *Apps* to uninstall it. Running a newer Setup updates it. Your
+connections and settings live in `%AppData%\yadbc`, apart from the app, so updating or uninstalling keeps them.
+The installer isn't signed yet: SmartScreen asks once (*More info → Run anyway*).
+
+Tag `v1.2.3` to release: CI builds the installer and attaches it to a GitHub release. To build it locally,
+run this (output in `dist/release`):
+
+```bash
+powershell -ExecutionPolicy Bypass -File dev/package-windows.ps1 -Version 0.1.0
+```
+
+## Run from source
 
 ```bash
 docker compose -f dev/compose.yaml up -d --build   # test DB on 127.0.0.1:55433, user/password/db: yadbc (with HypoPG + pg_stat_statements)

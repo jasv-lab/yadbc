@@ -14,10 +14,18 @@ public static class DesktopWindow
             .SetIconFile(Path.Combine(AppContext.BaseDirectory, "yadbc.ico"))
             .SetUseOsDefaultSize(false)
             .SetSize(1440, 900)
-            .Center()
             .SetResizable(true)
             .SetDevToolsEnabled(Environment.GetEnvironmentVariable("YADBC_DEV_URL") is not null)
             .Load(url);
+        // First start: maximized (un-maximizing gives the centered default size).
+        if (!WindowPlacement.Exists) window.Center().SetMaximized(true);
+        // Where it was closed: restored once the native window exists, saved while it still does.
+        window.RegisterWindowCreatedHandler((_, _) => WindowPlacement.Restore(window.WindowHandle));
+        window.RegisterWindowClosingHandler((_, _) =>
+        {
+            WindowPlacement.Save(window.WindowHandle);
+            return false; // don't cancel the close
+        });
 
         window.WaitForClose();
     }

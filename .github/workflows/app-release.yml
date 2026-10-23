@@ -1,0 +1,34 @@
+name: App release
+
+# Tag v1.2.3 → the Windows installer (dev/package-windows.ps1) attached to a GitHub release v1.2.3.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build the installer
+        shell: pwsh
+        run: ./dev/package-windows.ps1 -Version $env:GITHUB_REF_NAME.TrimStart('v')
+      - name: Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = Get-ChildItem dist/release -File | ForEach-Object FullName
+          gh release create $env:GITHUB_REF_NAME @assets --title "yadbc $($env:GITHUB_REF_NAME.TrimStart('v'))" --generate-notes

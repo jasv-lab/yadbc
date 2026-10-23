@@ -12,3 +12,6 @@ node_modules/
 
 # Your own deployment values (hostnames, registry, …) — kept out of the public repo
 deploy/local/
+
+# Installer builds (dev/package-windows.ps1)
+dist/

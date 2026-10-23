@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
+using Velopack;
 using Yadbc.Host.Activity;
 using Yadbc.Host.Advisor;
 using Yadbc.Host.Ai;
@@ -27,6 +28,10 @@ public static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // The installer's hooks (shortcuts on install, cleanup on uninstall) run the app with special
+        // arguments and exit here; a normal start passes straight through. Nothing to do when not installed.
+        VelopackApp.Build().Run();
+
         // YADBC_HEADLESS=1: no window, serve on a fixed port and print the URL (for browser-based debugging).
         // YADBC_DEV_URL=http://localhost:4200: the window loads `ng serve`, which proxies /api and /ws to us.
         var headless = Environment.GetEnvironmentVariable("YADBC_HEADLESS") == "1";
