@@ -44,7 +44,14 @@ public static class Program
         var mcpPort = McpState.ConfiguredPort();
         var mcpListening = McpState.PortIsFree(mcpPort);
 
-        var builder = WebApplication.CreateBuilder(args);
+        // The UI (wwwroot) resolves against the content root, which defaults to the working directory: a
+        // published / installed yadbc started from anywhere else (a taskbar pin, a terminal) would serve a
+        // blank page. Next to the exe when it's there; `dotnet run` keeps the project folder.
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            Args = args,
+            ContentRootPath = Directory.Exists(Path.Combine(AppContext.BaseDirectory, "wwwroot")) ? AppContext.BaseDirectory : null,
+        });
         // Loopback only, never 0.0.0.0: this process holds DB credentials.
         builder.WebHost.UseKestrel(o =>
         {
@@ -71,6 +78,8 @@ public static class Program
         // LLM answers can take minutes (thinking models); the stream is cancelled when the UI stops it.
         builder.Services.AddHttpClient("llm", c => c.Timeout = TimeSpan.FromMinutes(10));
         builder.Services.AddSingleton<McpState>();
+        builder.Services.AddSingleton<Updates>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<Updates>());
         // Stateless: every MCP request stands alone — nothing to keep per client between tool calls.
         builder.Services.AddMcpServer().WithHttpTransport(o => o.Stateless = true).WithTools<YadbcTools>();
 
@@ -97,6 +106,7 @@ public static class Program
         app.MapSharingEndpoints();
         app.MapSchemaChangeEndpoints();
         app.MapMcpSettings();
+        app.MapUpdateEndpoints();
         app.MapMcp("/mcp");
         app.Map("/ws", (HttpContext ctx, QuerySocketHandler handler) => handler.Handle(ctx));
         app.MapFallbackToFile("index.html");
@@ -111,6 +121,7 @@ public static class Program
 
         // The token travels in the URL fragment: never sent to the server, never logged, read once by the UI.
         var url = $"{devUrl ?? $"http://127.0.0.1:{port}"}/#token={security.Token}";
+        var updates = app.Services.GetRequiredService<Updates>();
 
         if (headless)
         {
@@ -118,11 +129,14 @@ public static class Program
             app.WaitForShutdown();
             // Disposing the services kills tunnel processes (ssh / kubectl) instead of orphaning them.
             app.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            updates.ApplyOnExit();
             return;
         }
 
         DesktopWindow.Run(url);
         app.StopAsync().GetAwaiter().GetResult();
         app.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        // Last: a downloaded update is applied once this process has exited (and restarts it if asked).
+        updates.ApplyOnExit();
     }
 }

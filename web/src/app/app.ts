@@ -1,4 +1,5 @@
 import { Dialog } from '@angular/cdk/dialog'
+import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu'
 import {
   ChangeDetectionStrategy,
   Component,
@@ -34,12 +35,14 @@ import { Edits } from './editing/edits'
 import { ConfirmData, ConfirmDialog } from './ui/confirm-dialog'
 import { concatMap, from, lastValueFrom, toArray } from 'rxjs'
 import { Icon } from './ui/icon'
+import { ScrollStrip } from './ui/scroll-strip'
 import { ResultsPanel } from './workspace/results-panel'
 import { ActivityView } from './activity/activity-view'
 import { DiagramView } from './diagram/diagram-view'
 import { CompareView } from './compare/compare-view'
 import { Catalog } from './schema/catalog'
 import { Session } from './core/session'
+import { Updates } from './core/updates'
 import { BlockingWatch } from './blocking/blocking-watch'
 import { EditorTab, WorkTab, Workspace } from './workspace/workspace'
 
@@ -53,7 +56,20 @@ const ENV_EDGE = { local: 'border-t-env-local', dev: 'border-t-env-dev', prod: '
 @Component({
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [SqlEditor, ResultsPanel, Icon, Drawer, Sidebar, ActivityView, DiagramView, CompareView],
+  imports: [
+    SqlEditor,
+    ResultsPanel,
+    Icon,
+    Drawer,
+    Sidebar,
+    ActivityView,
+    DiagramView,
+    CompareView,
+    ScrollStrip,
+    CdkMenu,
+    CdkMenuItem,
+    CdkMenuTrigger,
+  ],
   // minmax(0,1fr): an implicit `auto` column would grow to the content's min width (grid + pinned drawer).
   host: { class: 'grid h-screen grid-cols-[minmax(0,1fr)] grid-rows-[1fr_22px] select-none' },
   templateUrl: './app.html',
@@ -72,6 +88,7 @@ export class App {
   private readonly catalog = inject(Catalog)
   private readonly session = inject(Session)
   protected readonly blocking = inject(BlockingWatch)
+  protected readonly updates = inject(Updates)
 
   /** A tab other than the one shown is blocking others: say so in the status bar. */
   protected readonly blockingElsewhere = computed(() => {
@@ -387,6 +404,34 @@ export class App {
     tab.params = { ...tab.params, ...values }
     this.workspace.touched$.next()
     return statements.map((s) => ({ ...s, sql: bindParams(s.sql, values) }))
+  }
+
+  /** Restarting drops sessions: a running query or staged edits get a confirmation first. */
+  protected async restartToUpdate() {
+    const tabs = this.workspace.editorTabs()
+    const running = tabs.filter((t) => t.status() === 'running').length
+    const staged = tabs.some((t) => this.edits.pendingFor(t).length)
+    if (running || staged) {
+      const lost = [
+        running ? `${running === 1 ? 'a running query' : running + ' running queries'} (cancelled)` : '',
+        staged ? 'staged edits that aren’t applied' : '',
+      ].filter(Boolean)
+      const choice = await lastValueFrom(
+        this.dialog.open<string, ConfirmData>(ConfirmDialog, {
+          data: {
+            title: 'Restart to update?',
+            message: `Restarting closes every database session, which loses ${lost.join(' and ')}. Open transactions roll back.`,
+            actions: [
+              { id: 'restart', label: 'Restart' },
+              { id: 'cancel', label: 'Not now' },
+            ],
+          },
+        }).closed,
+        { defaultValue: undefined },
+      )
+      if (choice !== 'restart') return
+    }
+    this.updates.restart().subscribe()
   }
 
   /**

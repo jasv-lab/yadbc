@@ -4,9 +4,19 @@ namespace Yadbc.Host.Hosting;
 
 public static class DesktopWindow
 {
+    static PhotinoWindow? _window;
+
+    /// <summary>Closes the window as if the user did (restarting into an update); false when there's none.</summary>
+    public static bool Close()
+    {
+        if (_window is not { } window) return false;
+        window.Close();
+        return true;
+    }
+
     public static void Run(string url)
     {
-        var window = new PhotinoWindow()
+        var window = _window = new PhotinoWindow()
             // Photino logs every call, including Load(url) with the per-launch token in it.
             .SetLogVerbosity(0)
             .SetTitle("yadbc")
@@ -28,5 +38,6 @@ public static class DesktopWindow
         });
 
         window.WaitForClose();
+        _window = null;
     }
 }

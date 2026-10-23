@@ -1,7 +1,7 @@
 import { HttpClient } from '@angular/common/http'
 import { computed, inject, Injectable, signal } from '@angular/core'
 import { toObservable } from '@angular/core/rxjs-interop'
-import { catchError, debounceTime, filter, forkJoin, merge, of, Subject } from 'rxjs'
+import { catchError, debounceTime, filter, forkJoin, merge, Observable, of, Subject } from 'rxjs'
 import { Connections } from '../connections/connections'
 import { Workspace } from '../workspace/workspace'
 import { ParamValue } from './params'
@@ -129,6 +129,15 @@ export class Session {
       }),
       prefs: this.prefs,
     }
+  }
+
+  /** Saves now (restarting into an update) and completes once the server has it. */
+  flush(): Observable<unknown> {
+    if (!this.loaded()) return of(null)
+    const body = JSON.stringify(this.snapshot())
+    if (body === this.lastSaved) return of(null)
+    this.lastSaved = body
+    return this.http.put('/api/workspace', body, { headers: { 'Content-Type': 'application/json' } })
   }
 
   private save(keepalive = false) {

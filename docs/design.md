@@ -362,6 +362,15 @@ Overrides of the debate verdict: **desktop window from day one** (so the shortcu
 - Saved 800 ms after any change (typing, cursor, tabs opened/closed/switched, schema, prefs) and flushed with a keepalive request when the window goes away; nothing is saved until the previous state has been applied, so an early save can't wipe it.
 - Restored editor tabs connect lazily — when first shown — so a start doesn't open every session (prod ones, tunnels) at once; the active tab connects right away. Tabs of connections deleted since are dropped. A writable-again (unlocked) prod tab comes back locked: the lock is per session.
 
+### Updates
+
+- An installed yadbc (Velopack, per user) checks the GitHub releases a minute after start and then every 4 hours, and downloads a new version in the background.
+- Nothing restarts on its own. When the download is done, the status bar shows **Restart to update**.
+  - Clicking it saves the workspace and closes the window the normal way (window position, sessions, tunnels); Velopack swaps the files in and starts yadbc again with the tabs back. A running query or staged edits get a confirmation first.
+  - Not clicking it: the update is installed when yadbc quits, without starting it again. If yadbc was killed instead, it's installed at the next start.
+- `dotnet run` and other non-installed runs never update. `YADBC_UPDATE_SOURCE` (a folder or URL with a Velopack feed) replaces GitHub, for testing.
+- The app finds its UI next to the exe, so starting it from any folder (a taskbar pin, a terminal) works.
+
 ### Layout
 ```
 ┌ sidebar ─────┬ tabs ··· [IN TX 00:42 · Commit · Rollback] [Run] ┬ drawer ┐

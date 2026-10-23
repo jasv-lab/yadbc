@@ -26,15 +26,22 @@
   <main class="flex min-w-0 flex-1 flex-col">
     <!-- Tab strip -->
     <div class="flex h-8 shrink-0 items-stretch border-b border-line bg-sunken">
-      <div class="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+      <!-- Tabs shrink to a readable minimum first; past that the strip scrolls (wheel, no scrollbar). -->
+      <div
+        class="flex min-w-0 flex-1 items-stretch"
+        [yScrollStrip]="workspace.activeTabId()"
+        #strip="scrollStrip"
+      >
         @for (t of workspace.tabs(); track t.id) {
           <div
-            class="group flex max-w-[220px] cursor-pointer items-center gap-2 border-r border-t-2 border-r-line pr-1 pl-3"
+            class="group flex max-w-[220px] min-w-[112px] shrink cursor-pointer items-center gap-2 border-r border-t-2 border-r-line pr-1 pl-3"
             [class]="
               t.id === workspace.activeTabId()
                 ? envEdge[t.connection.env] + ' bg-raised text-fg'
                 : 'border-t-transparent text-muted hover:bg-hover'
             "
+            [attr.data-active]="t.id === workspace.activeTabId() ? '' : null"
+            [title]="t.title"
             (click)="workspace.activeTabId.set(t.id)"
             (auxclick)="$event.button === 1 && closeTab(t)"
           >
@@ -47,7 +54,7 @@
             } @else {
               <span class="size-1.5 shrink-0 rounded-full" [class]="envDot[t.connection.env]"></span>
             }
-            <span class="truncate">{{ t.title }}</span>
+            <span class="min-w-0 flex-1 truncate">{{ t.title }}</span>
             @if (blocking.byTab().get(t.id)?.blocked?.length; as n) {
               <span
                 class="rounded-full bg-danger px-1.5 text-[10.5px] leading-4 font-semibold text-white"
@@ -84,6 +91,30 @@
           </div>
         }
       </div>
+      @if (strip.overflowing()) {
+        <button
+          class="grid w-7 shrink-0 place-items-center border-l border-line text-muted hover:bg-hover hover:text-fg"
+          title="All tabs"
+          [cdkMenuTriggerFor]="allTabs"
+        >
+          <y-icon name="chevron-down" [size]="14" />
+        </button>
+      }
+      <ng-template #allTabs>
+        <div cdkMenu class="menu max-h-[60vh] overflow-y-auto">
+          @for (t of workspace.tabs(); track t.id) {
+            <button
+              cdkMenuItem
+              class="menu-item gap-2"
+              [class.font-medium]="t.id === workspace.activeTabId()"
+              (cdkMenuItemTriggered)="workspace.activeTabId.set(t.id)"
+            >
+              <span class="size-1.5 shrink-0 rounded-full" [class]="envDot[t.connection.env]"></span>
+              <span class="truncate">{{ t.title }}</span>
+            </button>
+          }
+        </div>
+      </ng-template>
       @if (active(); as t) {
         <div class="flex items-center px-2">
           <!-- Writing a query is the assistant's main job, so it sits with Run, not behind errors and plans. -->
@@ -229,5 +260,26 @@
     }
   } @else {
     <span>yadbc</span>
+  }
+  <!-- A new version, already downloaded: restarting is the user's call (quitting installs it too). -->
+  @if (updates.status(); as u) {
+    @if (u.state === 'ready') {
+      <button
+        class="ml-auto flex items-center gap-1 rounded bg-accent px-1.5 leading-[18px] font-medium text-accent-fg hover:opacity-90"
+        [title]="
+          'yadbc ' +
+          u.current +
+          ' → ' +
+          u.available +
+          ' is downloaded. Restarting brings your tabs back; ' +
+          'or just quit later and it installs then.'
+        "
+        (click)="restartToUpdate()"
+      >
+        <y-icon name="refresh" [size]="11" /> Restart to update
+      </button>
+    } @else if (u.state === 'downloading') {
+      <span class="ml-auto text-faint">Downloading yadbc {{ u.available }} · {{ u.progress }} %</span>
+    }
   }
 </footer>

@@ -199,3 +199,17 @@ body {
   margin: 4px 6px;
   background: var(--border);
 }
+
+/* A sideways-scrolling strip without a scrollbar (ui/scroll-strip.ts): the wheel scrolls it. */
+.scroll-strip {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.scroll-strip::-webkit-scrollbar {
+  display: none;
+}
+/* Brought into view clear of the edge fade. */
+.scroll-strip > * {
+  scroll-margin-inline: 24px;
+}

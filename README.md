@@ -23,7 +23,8 @@ docs/             design docs
 ## Install
 
 `yadbc-win-Setup.exe` from a release. It installs per user into `%LocalAppData%\yadbc` (no admin), adds Start
-menu and desktop shortcuts and an entry in *Apps* to uninstall it. Running a newer Setup updates it. Your
+menu and desktop shortcuts and an entry in *Apps* to uninstall it. It updates itself from the releases: a new
+version downloads in the background and the status bar offers *Restart to update* (or it installs when you quit). Your
 connections and settings live in `%AppData%\yadbc`, apart from the app, so updating or uninstalling keeps them.
 The installer isn't signed yet: SmartScreen asks once (*More info → Run anyway*).
 
