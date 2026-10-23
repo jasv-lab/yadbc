@@ -4,7 +4,7 @@ import { splitSql } from '../core/sql-splitter'
 import { Catalog, CatalogColumn, CatalogObject, CatalogObjects, ident } from '../schema/catalog'
 import { EditorTab } from '../workspace/workspace'
 import { completionContext, RelationRef, resolveQualifier } from './completion'
-import type { MonacoApi } from './monaco'
+import { SQL_LANGUAGE, type MonacoApi } from './monaco'
 
 const KEYWORDS = (
   'select from where and or not in exists between like ilike is null true false as join left right inner full outer ' +
@@ -35,7 +35,7 @@ export function registerSqlCompletion(
 ): Monaco.IDisposable {
   const K = monaco.languages.CompletionItemKind
 
-  return monaco.languages.registerCompletionItemProvider('pgsql', {
+  return monaco.languages.registerCompletionItemProvider(SQL_LANGUAGE, {
     triggerCharacters: ['.'],
     async provideCompletionItems(model, position) {
       const tab = tabFor(model)

@@ -6,7 +6,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- LibraryImport (job object for tunnel processes) generates unsafe marshalling code. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- The exe's icon (Explorer, pinned taskbar); the window sets its own from the copy next to it. -->
+    <ApplicationIcon>yadbc.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="yadbc.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Yadbc.Contracts\Yadbc.Contracts.csproj" />

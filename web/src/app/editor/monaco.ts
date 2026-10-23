@@ -2,6 +2,92 @@ import type * as Monaco from 'monaco-editor'
 
 export type MonacoApi = typeof Monaco
 
+/** Our SQL language: Monaco's pgsql grammar plus the keywords it lacks (see registerSql). */
+export const SQL_LANGUAGE = 'yadbc-sql'
+
+/**
+ * Monaco's pgsql grammar lists only PostgreSQL's *reserved* words, so UPDATE, SET, INSERT, DELETE,
+ * VALUES, BEGIN, ALTER, DROP… (unreserved in Postgres) showed as plain text. These are the statement
+ * words and DDL vocabulary people actually type.
+ */
+const MISSING_KEYWORDS = [
+  'UPDATE',
+  'SET',
+  'INSERT',
+  'DELETE',
+  'VALUES',
+  'MERGE',
+  'MATCHED',
+  'UPSERT',
+  'CONFLICT',
+  'NOTHING',
+  'BEGIN',
+  'START',
+  'TRANSACTION',
+  'COMMIT',
+  'ROLLBACK',
+  'SAVEPOINT',
+  'RELEASE',
+  'ABORT',
+  'ALTER',
+  'DROP',
+  'TRUNCATE',
+  'RENAME',
+  'ADD',
+  'COLUMN',
+  'INDEX',
+  'VIEW',
+  'MATERIALIZED',
+  'SCHEMA',
+  'SEQUENCE',
+  'FUNCTION',
+  'PROCEDURE',
+  'TRIGGER',
+  'TYPE',
+  'ENUM',
+  'EXTENSION',
+  'DATABASE',
+  'ROLE',
+  'REPLACE',
+  'COMMENT',
+  'OWNED',
+  'OWNER',
+  'CASCADE',
+  'RESTRICT',
+  'IF',
+  'EXISTS',
+  'CONCURRENTLY',
+  'INCLUDE',
+  'PARTITION',
+  'ATTACH',
+  'DETACH',
+  'RETURNS',
+  'LANGUAGE',
+  'CALL',
+  'DO',
+  'EXECUTE',
+  'PREPARE',
+  'EXPLAIN',
+  'VACUUM',
+  'REINDEX',
+  'REFRESH',
+  'COPY',
+  'LOCK',
+  'GRANT',
+  'REVOKE',
+  'OVER',
+  'RECURSIVE',
+  'NULLS',
+  'FIRST',
+  'LAST',
+  'ROWS',
+  'RANGE',
+  'PRECEDING',
+  'FOLLOWING',
+  'UNBOUNDED',
+  'CURRENT',
+]
+
 let loading: Promise<MonacoApi> | null = null
 
 /** Monaco is lazy-loaded into its own chunk: the shell paints before the editor's ~MBs arrive. */
@@ -14,6 +100,7 @@ export function loadMonaco(): Promise<MonacoApi> {
     // self-contained stylesheet (codicon font inlined), copied as an asset.
     const [monaco] = await Promise.all([import('monaco-editor'), loadStylesheet('monaco/editor.main.css')])
     await document.fonts.load('13px "JetBrains Mono"')
+    await registerSql(monaco)
     defineThemes(monaco)
     return monaco
   })()
@@ -40,6 +127,20 @@ function loadStylesheet(href: string): Promise<void> {
     link.onload = () => resolve()
     link.onerror = () => reject(new Error(`Failed to load ${href}`))
     document.head.appendChild(link)
+  })
+}
+
+/**
+ * A language of our own rather than patching 'pgsql': Monaco loads that grammar lazily and would
+ * overwrite a patched tokenizer the first time a pgsql model appears.
+ */
+async function registerSql(monaco: MonacoApi) {
+  const pg = await import('monaco-editor/languages/definitions/pgsql/pgsql.js')
+  monaco.languages.register({ id: SQL_LANGUAGE, aliases: ['PostgreSQL', 'pgsql'] })
+  monaco.languages.setLanguageConfiguration(SQL_LANGUAGE, pg.conf)
+  monaco.languages.setMonarchTokensProvider(SQL_LANGUAGE, {
+    ...pg.language,
+    keywords: [...new Set([...(pg.language.keywords as string[]), ...MISSING_KEYWORDS])],
   })
 }
 

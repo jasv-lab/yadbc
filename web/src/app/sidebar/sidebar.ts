@@ -42,6 +42,7 @@ const ENV_DOT = { local: 'bg-env-local', dev: 'bg-env-dev', prod: 'bg-env-prod' 
           <span class="size-2 shrink-0 rounded-full" [class]="envDot[c.env]"></span>
           <span class="min-w-0 flex-1 truncate text-left">{{ c.name }}</span>
           <span class="truncate font-mono text-[11px] text-faint">{{ c.database }}</span>
+          <span class="env-label">{{ c.env }}</span>
         } @else {
           <span class="flex-1 text-left text-muted">Choose a connection</span>
         }
@@ -88,6 +89,7 @@ const ENV_DOT = { local: 'bg-env-local', dev: 'bg-env-dev', prod: 'bg-env-prod' 
             <button class="conn-row" [class.indented]="!!g.name" (click)="open.emit(c)" [title]="describe(c)">
               <span class="size-2 shrink-0 rounded-full" [class]="envDot[c.env]"></span>
               <span class="min-w-0 flex-1 truncate text-left">{{ c.name }}</span>
+              <span class="env-label">{{ c.env }}</span>
               <ng-container *ngTemplateOutlet="sharedMark; context: { $implicit: c }" />
               @if (c.tunnel) {
                 <y-icon name="tunnel" [size]="13" class="text-faint" />
@@ -111,6 +113,7 @@ const ENV_DOT = { local: 'bg-env-local', dev: 'bg-env-dev', prod: 'bg-env-prod' 
             <button cdkMenuItem class="menu-item" (cdkMenuItemTriggered)="open.emit(c)" [title]="describe(c)">
               <span class="size-2 shrink-0 rounded-full" [class]="envDot[c.env]"></span>
               <span class="min-w-0 flex-1 truncate">{{ c.name }}</span>
+              <span class="env-label">{{ c.env }}</span>
               <ng-container *ngTemplateOutlet="sharedMark; context: { $implicit: c }" />
               @if (c.id === current()?.id) {
                 <y-icon name="check" [size]="13" class="text-accent" />
@@ -173,6 +176,12 @@ const ENV_DOT = { local: 'bg-env-local', dev: 'bg-env-dev', prod: 'bg-env-prod' 
     </ng-template>
   `,
   styles: `
+    /* Two connections often share a name (cmdb, cmdb): the environment says which, not just its dot. */
+    .env-label {
+      flex-shrink: 0;
+      font-size: 11px;
+      color: var(--fg-faint);
+    }
     .group-label {
       padding: 8px 8px 2px;
       font-size: 11px;

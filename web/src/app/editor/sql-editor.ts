@@ -15,7 +15,7 @@ import { splitSql, statementAt } from '../core/sql-splitter'
 import { Catalog } from '../schema/catalog'
 import { Workspace } from '../workspace/workspace'
 import { EditorTab } from '../workspace/workspace'
-import { loadMonaco, MonacoApi } from './monaco'
+import { loadMonaco, MonacoApi, SQL_LANGUAGE } from './monaco'
 import { registerSqlCompletion } from './sql-completion'
 
 export type RunMode = 'statement' | 'all'
@@ -53,7 +53,7 @@ export class SqlEditor {
       const el = (this.host.nativeElement as HTMLElement).firstElementChild as HTMLElement
       this.editor = this.monaco.editor.create(el, {
         theme: 'yadbc',
-        language: 'pgsql',
+        language: SQL_LANGUAGE,
         fontFamily: 'JetBrains Mono',
         fontSize: 13,
         lineHeight: 20,
@@ -167,7 +167,7 @@ export class SqlEditor {
     }
     let model = this.models.get(tab.id)
     if (!model) {
-      model = this.monaco.editor.createModel(tab.initialSql, 'pgsql')
+      model = this.monaco.editor.createModel(tab.initialSql, SQL_LANGUAGE)
       this.models.set(tab.id, model)
       this.tabsByModel.set(model.uri.toString(), tab)
       const m = model
