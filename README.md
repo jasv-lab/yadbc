@@ -34,18 +34,9 @@ run this (output in `dist/release`):
 powershell -ExecutionPolicy Bypass -File dev/package-windows.ps1 -Version 0.1.0
 ```
 
-### Code signing policy
+### Privacy
 
-Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org).
-
-- Committers and reviewers: [jasv-lab members](https://github.com/orgs/jasv-lab/people)
-- Approvers: [jasv-lab owners](https://github.com/orgs/jasv-lab/people?query=role%3Aowner)
-
-Only the Windows installer built by the [release workflow](.github/workflows/app-release.yml) from this
-repository is signed, and each release is approved by hand. The artifact configuration is in
-[.signpath](.signpath/artifact-configurations/installer.xml).
-
-**Privacy:** this program will not transfer any information to other networked systems unless specifically
+This program will not transfer any information to other networked systems unless specifically
 requested by the user or the person installing or operating it. It connects only to what you configure:
 your databases (directly or through SSH / Kubernetes tunnels), optionally a shared-connections broker, and
 optionally an AI endpoint (set by you or shared by your team's broker admin), which receives your questions

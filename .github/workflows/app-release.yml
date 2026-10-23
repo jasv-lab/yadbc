@@ -72,5 +72,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $assets = Get-ChildItem dist/release -File | ForEach-Object FullName
-          $policy = "Code signing policy: https://github.com/$env:GITHUB_REPOSITORY#code-signing-policy"
-          gh release create $env:GITHUB_REF_NAME @assets --title "yadbc $env:VERSION" --notes $policy --generate-notes
+          gh release create $env:GITHUB_REF_NAME @assets --title "yadbc $env:VERSION" --generate-notes
